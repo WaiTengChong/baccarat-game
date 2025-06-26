@@ -301,3 +301,4 @@ MIT License - see LICENSE file for details
 ---
 
 **Note**: This refactored version can handle simulations that would crash the original frontend-only implementation. The backend architecture ensures smooth operation even with massive datasets. # baccarat-game
+# baccarat-game
