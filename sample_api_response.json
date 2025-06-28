@@ -1,0 +1,52 @@
+{
+  "simulationId": "sim_1751134181575_ytcnafg9i",
+  "status": "completed",
+  "message": "Simulation completed successfully",
+  "results": [
+    {
+      "playNumber": 1,
+      "games": [
+        {
+          "gameNumber": 1,
+          "gameId": 3,
+          "totalHands": 3,
+          "bankerWins": 3,
+          "playerWins": 0,
+          "tieWins": 0,
+          "bankerPairs": 0,
+          "playerPairs": 1,
+          "hands": [
+            {
+              "handNumber": 1,
+              "result": "Banker",
+              "playerTotal": 1,
+              "bankerTotal": 9,
+              "playerCards": [
+                {
+                  "suit": "♥",
+                  "value": "5"
+                },
+                {
+                  "suit": "♥",
+                  "value": "6"
+                }
+              ],
+              "bankerCards": [
+                {
+                  "suit": "♥",
+                  "value": "K"
+                },
+                {
+                  "suit": "♦",
+                  "value": "9"
+                }
+              ],
+              "bankerPair": false,
+              "playerPair": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

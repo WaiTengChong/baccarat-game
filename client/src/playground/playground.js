@@ -211,38 +211,34 @@ const View = ({
     if (!playData || !playData.games) return [];
 
     return playData.games.map((game, index) => {
-      // Calculate statistics for each game
-      const totalHands = game.hands.length;
-      const bankerWins = game.hands.filter(
-        (hand) => hand.result === "Banker"
-      ).length;
-      const playerWins = game.hands.filter(
-        (hand) => hand.result === "Player"
-      ).length;
-      const bankerPair = game.hands.filter(
-        (hand) => hand.result === "Banker Pair"
-      ).length;
-      const playerPair = game.hands.filter(
-        (hand) => hand.result === "Player Pair"
-      ).length;
-      const tieWins = bankerPair + playerPair;
-
-      // Calculate pairs
-      const bankerPairs = game.hands.filter((hand) => {
-        const bankerCards = hand.bankerCards;
-        return (
-          bankerCards.length >= 2 &&
-          bankerCards[0].value === bankerCards[1].value
-        );
-      }).length;
-
-      const playerPairs = game.hands.filter((hand) => {
-        const playerCards = hand.playerCards;
-        return (
-          playerCards.length >= 2 &&
-          playerCards[0].value === playerCards[1].value
-        );
-      }).length;
+      // Use the hands data to calculate statistics
+      const totalHands = game.hands ? game.hands.length : game.totalHands || 0;
+      
+      let bankerWins = 0;
+      let playerWins = 0;
+      let tieWins = 0;
+      let bankerPairs = 0;
+      let playerPairs = 0;
+      
+      if (game.hands && game.hands.length > 0) {
+        // Calculate from actual hands data
+        game.hands.forEach(hand => {
+          if (hand.result === "Banker") bankerWins++;
+          else if (hand.result === "Player") playerWins++;
+          else if (hand.result === "Tie") tieWins++;
+          
+          // Check for pairs
+          if (hand.bankerPair) bankerPairs++;
+          if (hand.playerPair) playerPairs++;
+        });
+      } else {
+        // Fallback to aggregated data if hands not available
+        bankerWins = game.bankerWins || 0;
+        playerWins = game.playerWins || 0;
+        tieWins = game.tieWins || 0;
+        bankerPairs = game.bankerPairs || 0;
+        playerPairs = game.playerPairs || 0;
+      }
 
       return {
         key: index + 1,
@@ -498,31 +494,40 @@ const Playground = () => {
     try {
       addLog(`Loading detailed data for game ${gameData.gameNumber}...`);
       
-      // Load hands from backend API
-      const handsResponse = await BaccaratAPI.getGameHands(gameData.gameId);
-      
-      // Convert backend hands format to frontend format
-      const convertedHands = handsResponse.hands.map(hand => ({
-        handNumber: hand.hand_number,
-        result: hand.result,
-        playerTotal: hand.player_total,
-        bankerTotal: hand.banker_total,
-        playerCards: hand.player_cards,
-        bankerCards: hand.banker_cards,
-        bankerPair: hand.banker_pair,
-        playerPair: hand.player_pair
-      }));
-      
-      const detailedGameData = {
-        ...gameData,
-        hands: convertedHands
-      };
-      
-      setDetailedViewData(detailedGameData);
-      setShowDetailedView(true);
-      setShowTableView(false);
-      
-      addLog(`Loaded ${convertedHands.length} hands for game ${gameData.gameNumber}`);
+      // Check if hands data is already available in gameData
+      if (gameData.hands && gameData.hands.length > 0) {
+        // Use existing hands data
+        setDetailedViewData(gameData);
+        setShowDetailedView(true);
+        setShowTableView(false);
+        addLog(`Loaded ${gameData.hands.length} hands for game ${gameData.gameNumber}`);
+      } else {
+        // Load hands from backend API as fallback
+        const handsResponse = await BaccaratAPI.getGameHands(gameData.gameId);
+        
+        // Convert backend hands format to frontend format
+        const convertedHands = handsResponse.hands.map(hand => ({
+          handNumber: hand.hand_number,
+          result: hand.result,
+          playerTotal: hand.player_total,
+          bankerTotal: hand.banker_total,
+          playerCards: hand.player_cards,
+          bankerCards: hand.banker_cards,
+          bankerPair: hand.banker_pair,
+          playerPair: hand.player_pair
+        }));
+        
+        const detailedGameData = {
+          ...gameData,
+          hands: convertedHands
+        };
+        
+        setDetailedViewData(detailedGameData);
+        setShowDetailedView(true);
+        setShowTableView(false);
+        
+        addLog(`Loaded ${convertedHands.length} hands for game ${gameData.gameNumber}`);
+      }
     } catch (error) {
       console.error('Error loading game details:', error);
       addLog(`Error loading game details: ${error.message}`);

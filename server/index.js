@@ -296,25 +296,26 @@ app.post('/api/simulations', async (req, res) => {
     const simulationId = `sim_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     // Insert simulation record
-    db.run(
-      'INSERT INTO simulations (id, plays, games_per_play, hands_per_game, deck_count, status, progress) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [simulationId, plays, gamesPerPlay, handsPerGame, deckCount, 'running', 0],
-      function(err) {
-        if (err) {
-          console.error('Database insert error:', err);
-          return res.status(500).json({ error: err.message });
+    await new Promise((resolve, reject) => {
+      db.run(
+        'INSERT INTO simulations (id, plays, games_per_play, hands_per_game, deck_count, status, progress) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [simulationId, plays, gamesPerPlay, handsPerGame, deckCount, 'running', 0],
+        function(err) {
+          if (err) return reject(err);
+          resolve();
         }
-        
-        // Start simulation in background
-        runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, deckCount);
-        
-        res.json({ 
-          simulationId,
-          status: 'started',
-          message: 'Simulation started successfully'
-        });
-      }
-    );
+      );
+    });
+
+    // Run simulation synchronously so we can return full data structure
+    const simulationData = await runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, deckCount);
+    
+    res.json({ 
+      simulationId,
+      status: 'completed',
+      message: 'Simulation completed successfully',
+      results: simulationData
+    });
   } catch (error) {
     console.error('Simulation start error:', error);
     res.status(500).json({ error: error.message });
@@ -392,8 +393,13 @@ async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, de
   const totalGames = plays * gamesPerPlay;
   let completedGames = 0;
   
+  // NEW: aggregated results to return
+  const aggregatedResults = [];
+  
   try {
     for (let play = 1; play <= plays; play++) {
+      const playData = { playNumber: play, games: [] };
+      
       for (let game = 1; game <= gamesPerPlay; game++) {
         let deck = shuffleDeck(createDeck(deckCount));
         const gameHands = [];
@@ -425,6 +431,19 @@ async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, de
           });
         }
         
+        // Prepare game object that will be filled with DB id after insertion
+        const gameObj = {
+          gameNumber: game,
+          gameId: null, // will set after DB insertion
+          totalHands: handsPerGame,
+          bankerWins,
+          playerWins,
+          tieWins,
+          bankerPairs,
+          playerPairs,
+          hands: gameHands
+        };
+        
         // Insert game record
         await new Promise((resolve, reject) => {
           db.run(
@@ -433,7 +452,8 @@ async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, de
             function(err) {
               if (err) return reject(err);
               
-              const gameId = this.lastID;
+              const insertedGameId = this.lastID;
+              gameObj.gameId = insertedGameId;
               
               // Insert hand records
               const handInserts = gameHands.map(hand => 
@@ -441,7 +461,7 @@ async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, de
                   db.run(
                     'INSERT INTO hands (game_id, hand_number, result, player_total, banker_total, player_cards, banker_cards, banker_pair, player_pair) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
                     [
-                      gameId,
+                      insertedGameId,
                       hand.handNumber,
                       hand.result,
                       hand.playerTotal,
@@ -460,7 +480,10 @@ async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, de
               );
               
               Promise.all(handInserts)
-                .then(() => resolve())
+                .then(() => {
+                  playData.games.push(gameObj); // push after hands inserted
+                  resolve();
+                })
                 .catch(reject);
             }
           );
@@ -475,6 +498,8 @@ async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, de
           [progress, simulationId]
         );
       }
+      
+      aggregatedResults.push(playData);
     }
     
     // Mark simulation as completed
@@ -483,12 +508,15 @@ async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, de
       ['completed', simulationId]
     );
     
+    return aggregatedResults; // NEW: return aggregated data
+    
   } catch (error) {
     console.error('Simulation error:', error);
     db.run(
       'UPDATE simulations SET status = ? WHERE id = ?',
       ['error', simulationId]
     );
+    throw error; // propagate so caller can handle
   }
 }
 

@@ -43,6 +43,10 @@ const MatchingData = ({
     return displayItems.length > 0 ? displayItems.join(', ') : "暫無數據";
   };
 
+  // Ensure we have valid data for the chart
+  const chartData = matchingData && Array.isArray(matchingData) ? matchingData : [];
+  const hasData = chartData.length > 0;
+
   return (
     <Card
       className={styles.salesCard}
@@ -54,39 +58,45 @@ const MatchingData = ({
     >
       <div className={styles.salesCard}>
         <div className={styles.salesBar}>
-          <Column
-            autoFit
-            height={270}
-            data={matchingData}
-            xField="x"
-            yField="y"
-            seriesField="type"
-            paddingBottom={12}
-            axis={{
-                x: {
-                  title: "連續",
-                  gridLineDash: null,
-                  gridStroke: '#000',
-                },
-                y: {
-                  title: "次數",
-                  gridLineDash: null,
-                  gridStroke: '#000',
-                },
-              }}
-              scale={{
-                x: { paddingInner: 0.4 },
-              }}
-              legend={{
-                position: 'top',
-              }}
-              color={['#fa1414', '#1890ff']}
-              columnStyle={(datum) => {
-                return {
-                  fill: datum.type === '莊' ? '#fa1414' : '#1890ff'
-                };
-              }}
-          />
+          {hasData ? (
+            <Column
+              autoFit
+              height={270}
+              data={chartData}
+              xField="x"
+              yField="y"
+              seriesField="type"
+              paddingBottom={12}
+              axis={{
+                  x: {
+                    title: "連續",
+                    gridLineDash: null,
+                    gridStroke: '#000',
+                  },
+                  y: {
+                    title: "次數",
+                    gridLineDash: null,
+                    gridStroke: '#000',
+                  },
+                }}
+                scale={{
+                  x: { paddingInner: 0.4 },
+                }}
+                legend={{
+                  position: 'top',
+                }}
+                color={['#fa1414', '#1890ff']}
+                columnStyle={(datum) => {
+                  return {
+                    fill: datum.type === '莊' ? '#fa1414' : '#1890ff'
+                  };
+                }}
+            />
+          ) : (
+            <div style={{ height: 270, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>
+              暫無數據可顯示
+            </div>
+          )}
         </div>
       </div>
 
@@ -101,11 +111,19 @@ const MatchingData = ({
           </thead>
           <tbody>
             {(() => {
-              if (!matchingData || matchingData.length === 0) return null;
+              if (!hasData) {
+                return (
+                  <tr>
+                    <td colSpan="3" style={{ border: '1px solid #d9d9d9', padding: '8px', textAlign: 'center', color: '#999' }}>
+                      暫無數據
+                    </td>
+                  </tr>
+                );
+              }
               
               // Group data by x value and type
               const grouped = {};
-              matchingData.forEach(item => {
+              chartData.forEach(item => {
                 if (!grouped[item.x]) {
                   grouped[item.x] = {};
                 }
@@ -114,7 +132,7 @@ const MatchingData = ({
               
               // Generate table rows
               const rows = [];
-              const maxX = Math.max(...matchingData.map(item => item.x));
+              const maxX = Math.max(...chartData.map(item => item.x));
               
               for (let i = 1; i <= maxX; i++) {
                 const bankerCount = grouped[i]?.['莊'] || 0;
@@ -137,7 +155,13 @@ const MatchingData = ({
                 }
               }
               
-              return rows;
+              return rows.length > 0 ? rows : (
+                <tr>
+                  <td colSpan="3" style={{ border: '1px solid #d9d9d9', padding: '8px', textAlign: 'center', color: '#999' }}>
+                    暫無連續數據
+                  </td>
+                </tr>
+              );
             })()}
           </tbody>
         </table>

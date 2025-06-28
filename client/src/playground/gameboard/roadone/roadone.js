@@ -11,7 +11,7 @@ const RoadOne = ({ gameResults = [] }) => {
     
     // Function to detect pairs in cards
     const hasPair = (cards) => {
-      return cards.length >= 2 && cards[0].value === cards[1].value;
+      return cards && cards.length >= 2 && cards[0].value === cards[1].value;
     };
     
     // Check if results is a single game object with hands array
@@ -22,8 +22,8 @@ const RoadOne = ({ gameResults = [] }) => {
           id: handId++,
           outcome: hand.result === 'Player' ? '閑' : hand.result === 'Banker' ? '莊' : '和',
           type: hand.result.toLowerCase(),
-          bankPair: hasPair(hand.bankerCards),
-          playerPair: hasPair(hand.playerCards),
+          bankPair: hand.bankerPair || hasPair(hand.bankerCards),
+          playerPair: hand.playerPair || hasPair(hand.playerCards),
           playerTotal: hand.playerTotal,
           bankerTotal: hand.bankerTotal,
           playerCards: hand.playerCards,
@@ -31,23 +31,27 @@ const RoadOne = ({ gameResults = [] }) => {
         });
       });
     } else if (Array.isArray(results)) {
-      // Original nested structure - process as before
+      // Nested structure - process as before
       results.forEach(play => {
-        play.games.forEach(game => {
-          game.hands.forEach(hand => {
-            converted.push({
-              id: handId++,
-              outcome: hand.result === 'Player' ? '閑' : hand.result === 'Banker' ? '莊' : '和',
-              type: hand.result.toLowerCase(),
-              bankPair: hasPair(hand.bankerCards),
-              playerPair: hasPair(hand.playerCards),
-              playerTotal: hand.playerTotal,
-              bankerTotal: hand.bankerTotal,
-              playerCards: hand.playerCards,
-              bankerCards: hand.bankerCards
-            });
+        if (play.games && Array.isArray(play.games)) {
+          play.games.forEach(game => {
+            if (game.hands && Array.isArray(game.hands)) {
+              game.hands.forEach(hand => {
+                converted.push({
+                  id: handId++,
+                  outcome: hand.result === 'Player' ? '閑' : hand.result === 'Banker' ? '莊' : '和',
+                  type: hand.result.toLowerCase(),
+                  bankPair: hand.bankerPair || hasPair(hand.bankerCards),
+                  playerPair: hand.playerPair || hasPair(hand.playerCards),
+                  playerTotal: hand.playerTotal,
+                  bankerTotal: hand.bankerTotal,
+                  playerCards: hand.playerCards,
+                  bankerCards: hand.bankerCards
+                });
+              });
+            }
           });
-        });
+        }
       });
     }
     

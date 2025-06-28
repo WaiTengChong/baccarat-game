@@ -6,31 +6,27 @@ import "./betArea.css";
 
 const { Text, Title } = Typography;
 
-// Helper function to convert backend results to frontend format
-function convertBackendResultsToFrontend(backendResults) {
-  // Group games by play number
-  const groupedByPlay = backendResults.games.reduce((acc, game) => {
-    if (!acc[game.play_number]) {
-      acc[game.play_number] = [];
-    }
-    acc[game.play_number].push(game);
-    return acc;
-  }, {});
+// Helper function to convert new API results to frontend format
+function convertNewAPIResultsToFrontend(apiResponse) {
+  // The new API returns results directly in the response.results array
+  // Each item in results array is a play with games array, each game has hands array
+  if (!apiResponse.results || !Array.isArray(apiResponse.results)) {
+    console.error('Invalid API response structure:', apiResponse);
+    return [];
+  }
 
-  // Convert to expected frontend format
-  return Object.keys(groupedByPlay).map(playNumber => ({
-    playNumber: parseInt(playNumber),
-    games: groupedByPlay[playNumber].map(game => ({
-      gameNumber: game.game_number,
-      gameId: game.id,
-      // Include the backend statistics
-      totalHands: game.total_hands,
-      bankerWins: game.banker_wins,
-      playerWins: game.player_wins,
-      tieWins: game.tie_wins,
-      bankerPairs: game.banker_pairs,
-      playerPairs: game.player_pairs,
-      hands: [] // Hands will be loaded separately when needed
+  return apiResponse.results.map(playData => ({
+    playNumber: playData.playNumber,
+    games: playData.games.map(game => ({
+      gameNumber: game.gameNumber,
+      gameId: game.gameId,
+      totalHands: game.totalHands,
+      bankerWins: game.bankerWins,
+      playerWins: game.playerWins,
+      tieWins: game.tieWins,
+      bankerPairs: game.bankerPairs,
+      playerPairs: game.playerPairs,
+      hands: game.hands // Full hands data is now included
     }))
   }));
 }
@@ -61,8 +57,12 @@ const BetArea = ({ onGameStart, onResetGame }) => {
     setSimulationStatus('Starting simulation...');
     
     try {
-      // Start simulation on backend with logging
-      const startResponse = await BaccaratAPI.startSimulation(
+      // Start simulation on backend with logging - now returns complete data
+      addLog(`🚀 Starting simulation: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks`);
+      setSimulationStatus('Running simulation...');
+      setProgress(50); // Show some progress
+      
+      const response = await BaccaratAPI.startSimulation(
         plays, 
         gamesPerPlay, 
         handsPerGame, 
@@ -70,28 +70,26 @@ const BetArea = ({ onGameStart, onResetGame }) => {
         addLog  // Pass the logger
       );
       
-      setSimulationStatus('Simulation running...');
+      console.log('API Response:', response);
       
-      // Poll for completion with progress updates and logging
-      const results = await BaccaratAPI.pollSimulationUntilComplete(
-        startResponse.simulationId,
-        (statusUpdate) => {
-          setProgress(statusUpdate.progress || 0);
-          setSimulationStatus(`Progress: ${statusUpdate.progress || 0}%`);
-        },
-        addLog  // Pass the logger
-      );
-      
+      setProgress(100);
       setSimulationStatus('Simulation completed!');
       
-      // Convert backend results to frontend format
-      const frontendResults = convertBackendResultsToFrontend(results);
+      // Convert new API results to frontend format
+      const frontendResults = convertNewAPIResultsToFrontend(response);
       
       // Create play cards data for the UI
       const newPlayCardsData = frontendResults.map(playData => ({
         ...playData,
-        state: 'finish' // Mark as finished since backend simulation is complete
+        state: 'finish' // Mark as finished since simulation is complete
       }));
+      
+      // Log completion
+      const totalHands = frontendResults.reduce((total, play) => 
+        total + play.games.reduce((gameTotal, game) => 
+          gameTotal + game.hands.length, 0), 0);
+      
+      addLog(`✅ Simulation completed with ${frontendResults.length} plays and ${totalHands} total hands`);
       
       // Pass results to parent component
       onGameStart(plays, frontendResults, newPlayCardsData);
@@ -99,7 +97,7 @@ const BetArea = ({ onGameStart, onResetGame }) => {
     } catch (error) {
       console.error('Simulation error:', error);
       message.error(`Simulation failed: ${error.message}`);
-      addLog(`Simulation failed: ${error.message}`);
+      addLog(`❌ Simulation failed: ${error.message}`);
       setSimulationStatus('Simulation failed');
     }
     
