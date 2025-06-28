@@ -1,0 +1,255 @@
+/* Baccarat Big Road Component Styles */
+
+.bigroad-container {
+  display: flex;
+  flex-direction: column;
+  width: 40%;
+  margin: 20px;
+  padding: 20px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.bigroad-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.bigroad-header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.bigroad-info {
+  display: flex;
+  gap: 20px;
+  font-size: 14px;
+  color: #666;
+  font-weight: 500;
+}
+
+.bigroad-info span {
+  padding: 4px 8px;
+  background-color: #e9ecef;
+  border-radius: 4px;
+}
+
+/* Main grid container */
+.bigroad-grid {
+  display: grid;
+  background-color: #fff;
+  border: 2px solid #000;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  overflow-x: auto;
+  min-height: 300px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.bigroad-grid-item {
+  border: 0.5px solid #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 50px;
+  background-color: #fff;
+}
+
+/* Individual road ring - changed from filled circle to hollow ring */
+.road-ring {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 3px solid;
+  background-color: transparent;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.road-ring:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Ring border colors */
+.road-ring.banker {
+  border-color: #dc3545;
+}
+
+.road-ring.player {
+  border-color: #007bff;
+}
+
+/* Green diagonal line for single tie */
+.tie-diagonal {
+  position: absolute;
+  width: 60%;
+  height: 2px;
+  background-color: #28a745;
+  transform: rotate(45deg);
+  z-index: 2;
+}
+
+/* Green number for multiple ties */
+.tie-number {
+  position: absolute;
+  font-size: 14px;
+  font-weight: 700;
+  color: #28a745;
+  z-index: 2;
+  text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+}
+
+/* Pair dots */
+.pair-dot {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid #fff;
+  z-index: 3;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* Bank pair dot - top left corner */
+.bank-pair-dot {
+  top: 2px;
+  left: 2px;
+  background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+  border-color: #fff;
+}
+
+/* Player pair dot - bottom right corner */
+.player-pair-dot {
+  bottom: 2px;
+  right: 2px;
+  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+  border-color: #fff;
+}
+
+/* Controls section */
+.bigroad-controls {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.regenerate-btn {
+  padding: 12px 24px;
+  background-color: #1890ff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 500;
+  transition: background-color 0.3s ease;
+  min-width: 180px;
+}
+
+.regenerate-btn:hover {
+  background-color: #40a9ff;
+}
+
+.regenerate-btn:active {
+  background-color: #096dd9;
+}
+
+/* Legend section */
+.bigroad-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 15px;
+  background-color: #fff;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+}
+
+.bigroad-legend > div:first-child {
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+/* Legend rings */
+.legend-ring {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid;
+  background-color: transparent;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.legend-ring.banker {
+  border-color: #dc3545;
+}
+
+.legend-ring.player {
+  border-color: #007bff;
+}
+
+.legend-note {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  text-align: center;
+  border-top: 1px solid #e0e0e0;
+  padding-top: 10px;
+}
+
+.legend-note small {
+  font-size: 12px;
+  color: #666;
+  font-style: italic;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .bigroad-container {
+    padding: 15px;
+    margin: 10px;
+  }
+  
+  .bigroad-header {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+  
+  .bigroad-info {
+    justify-content: center;
+  }
+  
+  .bigroad-legend > div:first-child {
+    flex-direction: column;
+    gap: 15px;
+  }
+  
+  .legend-item {
+    justify-content: center;
+  }
+} 

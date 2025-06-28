@@ -1,0 +1,34 @@
+# Node dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build outputs
+client/build/
+client/dist/
+electron/dist/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / Editor junk
+.DS_Store
+.vscode/
+.idea/
+.env
+.env.*
+
+# Databases
+server/*.sqlite
+temp_baccarat*.sqlite
+
+# Electron packaging
+*.asar
+release/
+
+# Misc
+*.tgz
+coverage/
+# local scripts placeholder
+scripts 

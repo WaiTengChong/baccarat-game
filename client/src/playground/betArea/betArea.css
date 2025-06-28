@@ -1,0 +1,160 @@
+.bet-area-container {
+  padding: 20px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  border-radius: 8px;
+  margin: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.bet-controls {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 100px;
+}
+
+.control-label {
+  font-weight: 600;
+  font-size: 14px;
+  color: #333;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.control-input {
+  width: 80px !important;
+  text-align: center;
+  border-radius: 6px;
+  border: 2px solid #d9d9d9;
+  transition: all 0.3s ease;
+}
+
+.control-input:hover {
+  border-color: #40a9ff;
+}
+
+.control-input:focus {
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.play-button {
+  background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%) !important;
+  border: none !important;
+  font-weight: bold;
+  font-size: 16px;
+  height: 48px;
+  padding: 0 32px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(82, 196, 26, 0.3);
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.play-button:hover {
+  background: linear-gradient(135deg, #73d13d 0%, #52c41a 100%) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(82, 196, 26, 0.4);
+}
+
+.play-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(82, 196, 26, 0.3);
+}
+
+.reset-button {
+  background: linear-gradient(135deg, #ff4d4f 0%, #cf1322 100%) !important;
+  border: none !important;
+  color: white !important;
+  font-weight: bold;
+  font-size: 16px;
+  height: 48px;
+  padding: 0 32px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(255, 77, 79, 0.3);
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.reset-button:hover {
+  background: linear-gradient(135deg, #ff7875 0%, #ff4d4f 100%) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 77, 79, 0.4);
+}
+
+.reset-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(255, 77, 79, 0.3);
+}
+
+/* Responsive design for smaller panels */
+@media (max-width: 768px) {
+  .bet-controls {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .control-group {
+    min-width: 80px;
+  }
+  
+  .control-input {
+    width: 70px !important;
+  }
+  
+  .play-button {
+    font-size: 14px;
+    height: 40px;
+    padding: 0 24px;
+  }
+}
+
+/* For very narrow panels */
+@media (max-width: 480px) {
+  .bet-area-container {
+    padding: 15px;
+  }
+  
+  .control-label {
+    font-size: 12px;
+  }
+  
+  .control-input {
+    width: 60px !important;
+  }
+  
+  .play-button {
+    font-size: 12px;
+    height: 36px;
+    padding: 0 20px;
+  }
+}
+
+/* Progress indicator styles */
+.simulation-progress {
+  display: flex;
+  align-items: center;
+  margin-top: 12px;
+  padding: 8px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+  width: 100%;
+  justify-content: center;
+}

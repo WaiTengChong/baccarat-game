@@ -1,0 +1,20 @@
+{
+  "name": "baccarat-game",
+  "version": "1.0.0",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "react-dev": "cd client && cross-env BROWSER=none yarn start",
+    "server-dev": "cd server && yarn dev",
+    "electron-dev": "concurrently -k \"yarn server-dev\" \"yarn react-dev\" \"cross-env ELECTRON_START_URL=http://localhost:3000 electron .\"",
+    "build-react": "cd client && yarn build",
+    "pack": "yarn build-react && electron-builder"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^36.4.0",
+    "electron-builder": "^26.0.12",
+    "nodemon": "^3.1.10"
+  }
+}

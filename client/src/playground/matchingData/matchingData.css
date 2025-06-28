@@ -1,0 +1,29 @@
+.matching-data-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  gap: 16px;
+}
+
+.matching-data-container > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.salesCard{
+  height: 100%;
+  width: 100%;
+}
+
+.dataText{
+  height: 100%;
+  width: 100%;
+  font-size: 25px;
+  font-weight: bold;
+  padding: 10px;
+}
+
+.salesBar{
+  height: 100%;
+  width: 100%;
+}
