@@ -1,6 +1,6 @@
 const { parentPort, workerData } = require('worker_threads');
 
-// Game logic functions (copied from main server)
+// Game logic functions (copied from main file for worker isolation)
 function createDeck(deckCount) {
   const suits = ["♠", "♥", "♣", "♦"];
   const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
@@ -109,64 +109,56 @@ function playBaccaratHand(deck) {
   };
 }
 
+// Helper function to detect pairs
 function hasPair(cards) {
   return cards.length >= 2 && cards[0].value === cards[1].value;
 }
 
-// Worker function to run simulation chunk
-function runSimulationChunk(playNumbers, gamesPerPlay, handsPerGame, deckCount) {
+// Worker function to simulate a batch of games
+function simulateGameBatch(playNumber, gameNumbers, handsPerGame, deckCount) {
   const results = [];
   
-  for (const playNumber of playNumbers) {
-    for (let game = 1; game <= gamesPerPlay; game++) {
-      let deck = shuffleDeck(createDeck(deckCount));
-      const gameHands = [];
-      let bankerWins = 0, playerWins = 0, tieWins = 0;
-      let bankerPairs = 0, playerPairs = 0;
-      
-      for (let hand = 1; hand <= handsPerGame; hand++) {
-        if (deck.length < 20) {
-          deck = shuffleDeck(createDeck(deckCount));
-        }
-        
-        const handResult = playBaccaratHand(deck);
-        deck = handResult.remainingDeck;
-        
-        // Count results
-        if (handResult.result === 'Banker') bankerWins++;
-        else if (handResult.result === 'Player') playerWins++;
-        else tieWins++;
-        
-        // Count pairs
-        if (hasPair(handResult.bankerCards)) bankerPairs++;
-        if (hasPair(handResult.playerCards)) playerPairs++;
-        
-        gameHands.push({
-          handNumber: hand,
-          ...handResult,
-          bankerPair: hasPair(handResult.bankerCards),
-          playerPair: hasPair(handResult.playerCards)
-        });
+  for (const gameNumber of gameNumbers) {
+    let deck = shuffleDeck(createDeck(deckCount));
+    const gameHands = [];
+    let bankerWins = 0, playerWins = 0, tieWins = 0;
+    let bankerPairs = 0, playerPairs = 0;
+    
+    for (let hand = 1; hand <= handsPerGame; hand++) {
+      if (deck.length < 20) {
+        deck = shuffleDeck(createDeck(deckCount));
       }
       
-      results.push({
-        playNumber,
-        gameNumber: game,
-        totalHands: handsPerGame,
-        bankerWins,
-        playerWins,
-        tieWins,
-        bankerPairs,
-        playerPairs,
-        hands: gameHands
+      const handResult = playBaccaratHand(deck);
+      deck = handResult.remainingDeck;
+      
+      // Count results
+      if (handResult.result === 'Banker') bankerWins++;
+      else if (handResult.result === 'Player') playerWins++;
+      else tieWins++;
+      
+      // Count pairs
+      if (hasPair(handResult.bankerCards)) bankerPairs++;
+      if (hasPair(handResult.playerCards)) playerPairs++;
+      
+      gameHands.push({
+        handNumber: hand,
+        ...handResult,
+        bankerPair: hasPair(handResult.bankerCards),
+        playerPair: hasPair(handResult.playerCards)
       });
     }
     
-    // Send progress update
-    parentPort.postMessage({
-      type: 'progress',
-      completedPlays: playNumbers.indexOf(playNumber) + 1,
-      totalPlays: playNumbers.length
+    results.push({
+      playNumber,
+      gameNumber,
+      totalHands: handsPerGame,
+      bankerWins,
+      playerWins,
+      tieWins,
+      bankerPairs,
+      playerPairs,
+      hands: gameHands
     });
   }
   
@@ -174,18 +166,10 @@ function runSimulationChunk(playNumbers, gamesPerPlay, handsPerGame, deckCount) 
 }
 
 // Main worker execution
-const { playNumbers, gamesPerPlay, handsPerGame, deckCount } = workerData;
-
 try {
-  const results = runSimulationChunk(playNumbers, gamesPerPlay, handsPerGame, deckCount);
-  
-  parentPort.postMessage({
-    type: 'completed',
-    results
-  });
+  const { playNumber, gameNumbers, handsPerGame, deckCount } = workerData;
+  const results = simulateGameBatch(playNumber, gameNumbers, handsPerGame, deckCount);
+  parentPort.postMessage({ success: true, results });
 } catch (error) {
-  parentPort.postMessage({
-    type: 'error',
-    error: error.message
-  });
+  parentPort.postMessage({ success: false, error: error.message });
 } 

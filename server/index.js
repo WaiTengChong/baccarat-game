@@ -4,10 +4,15 @@ const { Worker } = require('worker_threads');
 const path = require('path');
 const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
+const os = require('os');
 
 const app = express();
 app.use(express.json());
 app.use(cors());
+
+// Get number of CPU cores for parallel processing
+const NUM_CORES = os.cpus().length;
+console.log(`Available CPU cores: ${NUM_CORES}`);
 
 // Temporary database setup
 let db;
@@ -388,75 +393,167 @@ app.get('/api/games/:gameId/hands', (req, res) => {
   );
 });
 
-// Run simulation function
+// Helper function to distribute work across CPU cores
+function distributeWorkload(plays, gamesPerPlay) {
+  const totalGames = plays * gamesPerPlay;
+  const workloads = [];
+  
+  // Use optimal number of workers based on workload size
+  let numWorkers;
+  if (totalGames < 10) {
+    numWorkers = Math.min(NUM_CORES, totalGames);
+  } else if (totalGames < 100) {
+    numWorkers = Math.min(NUM_CORES, Math.ceil(totalGames / 5));
+  } else {
+    numWorkers = NUM_CORES;
+  }
+  
+  const gamesPerWorker = Math.ceil(totalGames / numWorkers);
+  
+  let gameIndex = 0;
+  for (let worker = 0; worker < numWorkers; worker++) {
+    const workerGames = [];
+    
+    for (let i = 0; i < gamesPerWorker && gameIndex < totalGames; i++) {
+      const playNumber = Math.floor(gameIndex / gamesPerPlay) + 1;
+      const gameNumber = (gameIndex % gamesPerPlay) + 1;
+      
+      workerGames.push({
+        playNumber,
+        gameNumber,
+        gameIndex
+      });
+      
+      gameIndex++;
+    }
+    
+    if (workerGames.length > 0) {
+      workloads.push(workerGames);
+    }
+  }
+  
+  return workloads;
+}
+
+// Parallel simulation function using worker threads
 async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, deckCount) {
   const totalGames = plays * gamesPerPlay;
-  let completedGames = 0;
+  const totalHands = totalGames * handsPerGame;
+  const startTime = Date.now();
   
-  // NEW: aggregated results to return
+  console.log(`Starting parallel simulation: ${plays} plays × ${gamesPerPlay} games × ${handsPerGame} hands = ${totalGames} total games (${totalHands} hands)`);
+  
+  // Distribute workload across CPU cores
+  const workloads = distributeWorkload(plays, gamesPerPlay);
+  console.log(`Using ${workloads.length} worker threads for parallel processing (${NUM_CORES} CPU cores available)`);
+  
   const aggregatedResults = [];
   
   try {
-    for (let play = 1; play <= plays; play++) {
-      const playData = { playNumber: play, games: [] };
-      
-      for (let game = 1; game <= gamesPerPlay; game++) {
-        let deck = shuffleDeck(createDeck(deckCount));
-        const gameHands = [];
-        let bankerWins = 0, playerWins = 0, tieWins = 0;
-        let bankerPairs = 0, playerPairs = 0;
-        
-        for (let hand = 1; hand <= handsPerGame; hand++) {
-          if (deck.length < 20) {
-            deck = shuffleDeck(createDeck(deckCount));
+    // Create workers and run simulation in parallel
+    const workerPromises = workloads.map((workload, workerIndex) => {
+      return new Promise((resolve, reject) => {
+        // Group games by play number for this worker
+        const playGroups = {};
+        workload.forEach(({ playNumber, gameNumber }) => {
+          if (!playGroups[playNumber]) {
+            playGroups[playNumber] = [];
           }
-          
-          const handResult = playBaccaratHand(deck);
-          deck = handResult.remainingDeck;
-          
-          // Count results
-          if (handResult.result === 'Banker') bankerWins++;
-          else if (handResult.result === 'Player') playerWins++;
-          else tieWins++;
-          
-          // Count pairs
-          if (hasPair(handResult.bankerCards)) bankerPairs++;
-          if (hasPair(handResult.playerCards)) playerPairs++;
-          
-          gameHands.push({
-            handNumber: hand,
-            ...handResult,
-            bankerPair: hasPair(handResult.bankerCards),
-            playerPair: hasPair(handResult.playerCards)
+          playGroups[playNumber].push(gameNumber);
+        });
+        
+        const workerResults = [];
+        const playPromises = [];
+        
+        // Process each play in this worker
+        for (const [playNumber, gameNumbers] of Object.entries(playGroups)) {
+          const workerPromise = new Promise((playResolve, playReject) => {
+            const worker = new Worker(path.join(__dirname, 'simulationWorker.js'), {
+              workerData: {
+                playNumber: parseInt(playNumber),
+                gameNumbers,
+                handsPerGame,
+                deckCount
+              }
+            });
+            
+            worker.on('message', (result) => {
+              if (result.success) {
+                workerResults.push(...result.results);
+                playResolve();
+              } else {
+                playReject(new Error(result.error));
+              }
+            });
+            
+            worker.on('error', playReject);
+            worker.on('exit', (code) => {
+              if (code !== 0) {
+                playReject(new Error(`Worker stopped with exit code ${code}`));
+              }
+            });
           });
+          
+          playPromises.push(workerPromise);
         }
         
-        // Prepare game object that will be filled with DB id after insertion
+        Promise.all(playPromises)
+          .then(() => resolve(workerResults))
+          .catch(reject);
+      });
+    });
+    
+    // Wait for all workers to complete
+    console.log('Waiting for all workers to complete...');
+    const allWorkerResults = await Promise.all(workerPromises);
+    
+    // Flatten and sort results
+    const flatResults = allWorkerResults.flat();
+    console.log(`Received ${flatResults.length} game results from workers`);
+    
+    // Group results by play number and insert into database
+    const playGroups = {};
+    flatResults.forEach(gameResult => {
+      if (!playGroups[gameResult.playNumber]) {
+        playGroups[gameResult.playNumber] = [];
+      }
+      playGroups[gameResult.playNumber].push(gameResult);
+    });
+    
+    // Process each play sequentially for database insertion
+    for (let play = 1; play <= plays; play++) {
+      const playData = { playNumber: play, games: [] };
+      const playGames = playGroups[play] || [];
+      
+      // Sort games by game number
+      playGames.sort((a, b) => a.gameNumber - b.gameNumber);
+      
+      for (const gameResult of playGames) {
         const gameObj = {
-          gameNumber: game,
-          gameId: null, // will set after DB insertion
-          totalHands: handsPerGame,
-          bankerWins,
-          playerWins,
-          tieWins,
-          bankerPairs,
-          playerPairs,
-          hands: gameHands
+          gameNumber: gameResult.gameNumber,
+          gameId: null,
+          totalHands: gameResult.totalHands,
+          bankerWins: gameResult.bankerWins,
+          playerWins: gameResult.playerWins,
+          tieWins: gameResult.tieWins,
+          bankerPairs: gameResult.bankerPairs,
+          playerPairs: gameResult.playerPairs,
+          hands: gameResult.hands
         };
         
         // Insert game record
         await new Promise((resolve, reject) => {
           db.run(
             'INSERT INTO games (simulation_id, play_number, game_number, total_hands, banker_wins, player_wins, tie_wins, banker_pairs, player_pairs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [simulationId, play, game, handsPerGame, bankerWins, playerWins, tieWins, bankerPairs, playerPairs],
+            [simulationId, play, gameResult.gameNumber, gameResult.totalHands, gameResult.bankerWins, gameResult.playerWins, gameResult.tieWins, gameResult.bankerPairs, gameResult.playerPairs],
             function(err) {
               if (err) return reject(err);
               
               const insertedGameId = this.lastID;
               gameObj.gameId = insertedGameId;
               
-              // Insert hand records
-              const handInserts = gameHands.map(hand => 
+              // Insert hand records in batch
+              const handInserts = gameResult.hands.map(hand => 
                 new Promise((resolveHand, rejectHand) => {
                   db.run(
                     'INSERT INTO hands (game_id, hand_number, result, player_total, banker_total, player_cards, banker_cards, banker_pair, player_pair) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -481,25 +578,23 @@ async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, de
               
               Promise.all(handInserts)
                 .then(() => {
-                  playData.games.push(gameObj); // push after hands inserted
+                  playData.games.push(gameObj);
                   resolve();
                 })
                 .catch(reject);
             }
           );
         });
-        
-        completedGames++;
-        const progress = Math.round((completedGames / totalGames) * 100);
-        
-        // Update progress
-        db.run(
-          'UPDATE simulations SET progress = ? WHERE id = ?',
-          [progress, simulationId]
-        );
       }
       
       aggregatedResults.push(playData);
+      
+      // Update progress
+      const progress = Math.round((play / plays) * 100);
+      db.run(
+        'UPDATE simulations SET progress = ? WHERE id = ?',
+        [progress, simulationId]
+      );
     }
     
     // Mark simulation as completed
@@ -508,15 +603,21 @@ async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, de
       ['completed', simulationId]
     );
     
-    return aggregatedResults; // NEW: return aggregated data
+    const endTime = Date.now();
+    const duration = (endTime - startTime) / 1000;
+    const handsPerSecond = Math.round(totalHands / duration);
+    
+    console.log(`Simulation completed successfully: ${aggregatedResults.length} plays processed in ${duration.toFixed(2)}s`);
+    console.log(`Performance: ${handsPerSecond} hands/second using ${workloads.length} worker threads`);
+    return aggregatedResults;
     
   } catch (error) {
-    console.error('Simulation error:', error);
+    console.error('Parallel simulation error:', error);
     db.run(
       'UPDATE simulations SET status = ? WHERE id = ?',
       ['error', simulationId]
     );
-    throw error; // propagate so caller can handle
+    throw error;
   }
 }
 
