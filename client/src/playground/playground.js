@@ -324,7 +324,10 @@ const View = ({
             <button onClick={onBackToPlays} className="back-button">
               ← 返回
             </button>
-            <h3>第{tableViewData.playNumber}局 - 遊戲統計</h3>
+            <h3>
+              第{tableViewData.playNumber}局 - 遊戲統計 一共{" "}
+              {tableViewData.games ? tableViewData.games.length : 0}局
+            </h3>
           </div>
         </Card>
         <MatchingData matchingData={allGamesConsecutiveWinsData} />
