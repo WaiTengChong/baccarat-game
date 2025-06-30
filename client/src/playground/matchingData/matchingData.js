@@ -119,9 +119,7 @@ const MatchingData = ({
       類型: item.type
     })) : [];
 
-  // Debug logging to check data
-  console.log('Original chartData:', chartData);
-  console.log('Transformed data:', transformedData);
+
 
   const columnConfig = {
     data: transformedData,

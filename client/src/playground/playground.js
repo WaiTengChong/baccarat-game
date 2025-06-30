@@ -314,8 +314,9 @@ const View = ({
   // Table View
   if (showTableView && tableViewData) {
     const tableData = generateTableData(tableViewData);
-    // Calculate consecutive wins data from ALL games instead of just current play
-    const allGamesConsecutiveWinsData = analyzeConsecutiveWins(gameResults);
+    // Calculate consecutive wins data from ONLY the current play, not all games
+    // Wrap tableViewData in array so analyzeConsecutiveWins can process it correctly
+    const currentPlayConsecutiveWinsData = analyzeConsecutiveWins([tableViewData]);
 
     return (
       <div className="table-view-container">
@@ -330,7 +331,7 @@ const View = ({
             </h3>
           </div>
         </Card>
-        <MatchingData matchingData={allGamesConsecutiveWinsData} gameResults={gameResults} />
+        <MatchingData matchingData={currentPlayConsecutiveWinsData} gameResults={tableViewData} />
         <div className="table-view-content">
           <Card className="table-view-card">
             <Table
@@ -347,8 +348,27 @@ const View = ({
 
   // Detailed View
   if (showDetailedView && detailedViewData) {
-    // Calculate consecutive wins data from ALL games instead of just current game
-    const allGamesConsecutiveWinsData = analyzeConsecutiveWins(gameResults);
+    // Calculate consecutive wins data from the current play (find the play that contains this game)
+    let currentPlayData = tableViewData; // Use the current play data from table view
+    if (!currentPlayData && detailedViewData.playNumber) {
+      // Fallback: find the play data from gameResults if not available
+      currentPlayData = gameResults.find(play => play.playNumber === detailedViewData.playNumber);
+    }
+    
+    // Ensure data is in correct format for analyzeConsecutiveWins function
+    let dataForAnalysis;
+    if (currentPlayData) {
+      // If we have play data, wrap it in array for the function
+      dataForAnalysis = [currentPlayData];
+    } else if (detailedViewData.hands) {
+      // If we only have a single game with hands, use it directly
+      dataForAnalysis = detailedViewData;
+    } else {
+      // Fallback: create a minimal structure
+      dataForAnalysis = [];
+    }
+    
+    const currentPlayConsecutiveWinsData = analyzeConsecutiveWins(dataForAnalysis);
 
     return (
       <div className="detailed-view-container">
@@ -434,7 +454,7 @@ const View = ({
               );
             })}
           </div>
-          <MatchingData matchingData={allGamesConsecutiveWinsData} gameResults={detailedViewData} />
+          <MatchingData matchingData={currentPlayConsecutiveWinsData} gameResults={currentPlayData || detailedViewData} />
         </div>
       </div>
     );
