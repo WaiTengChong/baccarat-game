@@ -10,6 +10,13 @@ A high-performance simulator for the casino card game **Baccarat**. The project 
 - Accurate implementation of Baccarat rules, including third‑card logic
 - React frontend using Ant Design components
 - Desktop support through Electron
+- Parallel processing via Node.js worker threads
+- Lightweight SQLite database created on startup and cleaned on exit
+
+## Repository Structure
+- `client/` – React application for configuring and visualising simulations
+- `server/` – Express API with simulation logic and SQLite database
+- `electron/` – Wrapper for packaging the app as a desktop application
 
 ## Architecture
 ```
@@ -45,6 +52,20 @@ npm run dev
 cd client
 npm start
 # Available at http://localhost:3000
+```
+
+### Run as a desktop app
+The project ships with an Electron wrapper. During development you can launch
+the backend, React dev server and Electron shell in one command:
+
+```bash
+yarn electron-dev
+```
+
+To build a production desktop package run:
+
+```bash
+yarn pack
 ```
 
 ### Basic simulation
