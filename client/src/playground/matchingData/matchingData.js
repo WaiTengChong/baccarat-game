@@ -110,6 +110,64 @@ const MatchingData = ({
   const chartData = matchingData && Array.isArray(matchingData) ? matchingData : [];
   const hasData = chartData.length > 0;
 
+  // Transform data structure for the new Column component and filter out zero values
+  const transformedData = hasData ? chartData
+    .filter(item => item.y > 0) // Filter out zero values to prevent empty bars
+    .map(item => ({
+      連續次數: String(item.x), // Convert to string to ensure proper categorical handling
+      次數: item.y,
+      類型: item.type
+    })) : [];
+
+  // Debug logging to check data
+  console.log('Original chartData:', chartData);
+  console.log('Transformed data:', transformedData);
+
+  const columnConfig = {
+    data: transformedData,
+    xField: '連續次數',
+    yField: '次數',
+    colorField: '類型',
+    group: true,
+    height: 270,
+    autoFit: true,
+    style: {
+      inset: 3,
+    },
+    scale: {
+      x: {
+        type: 'band',
+        paddingInner: 0.2,
+        paddingOuter: 0.1,
+      },
+      y: {
+        type: 'linear',
+        nice: true,
+        min: 0,
+      },
+      color: {
+        type: 'ordinal',
+        range: ['#fa1414', '#1890ff'],
+        domain: ['莊', '閑'],
+      },
+    },
+    legend: {
+      position: 'top',
+    },
+    axis: {
+      x: {
+        title: '連續',
+        gridLineDash: null,
+        gridStroke: '#000',
+      },
+      y: {
+        title: '次數',
+        gridLineDash: null,
+        gridStroke: '#000',
+      },
+    },
+  };
+
   return (
     <>
       <Card
@@ -123,39 +181,7 @@ const MatchingData = ({
         <div className={styles.salesCard}>
           <div className={styles.salesBar}>
             {hasData ? (
-              <Column
-                autoFit
-                height={270}
-                data={chartData}
-                xField="x"
-                yField="y"
-                seriesField="type"
-                paddingBottom={12}
-                axis={{
-                    x: {
-                      title: "連續",
-                      gridLineDash: null,
-                      gridStroke: '#000',
-                    },
-                    y: {
-                      title: "次數",
-                      gridLineDash: null,
-                      gridStroke: '#000',
-                    },
-                  }}
-                  scale={{
-                    x: { paddingInner: 0.4 },
-                  }}
-                  legend={{
-                    position: 'top',
-                  }}
-                  color={['#fa1414', '#1890ff']}
-                  columnStyle={(datum) => {
-                    return {
-                      fill: datum.type === '莊' ? '#fa1414' : '#1890ff'
-                    };
-                  }}
-              />
+              <Column {...columnConfig} />
             ) : (
               <div style={{ height: 270, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>
                 暫無數據可顯示
