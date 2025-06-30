@@ -287,7 +287,7 @@ app.get('/api/health', (req, res) => {
 // Start a new simulation
 app.post('/api/simulations', async (req, res) => {
   try {
-    const { plays, gamesPerPlay, handsPerGame, deckCount = 8 } = req.body;
+    const { plays, gamesPerPlay, handsPerGame, deckCount = 8, skipCard = 0 } = req.body;
     
     if (!plays || !gamesPerPlay || !handsPerGame) {
       return res.status(400).json({ error: 'Missing required parameters' });
@@ -313,7 +313,7 @@ app.post('/api/simulations', async (req, res) => {
     });
 
     // Run simulation synchronously so we can return full data structure
-    const simulationData = await runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, deckCount);
+    const simulationData = await runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, deckCount, skipCard);
     
     res.json({ 
       simulationId,
@@ -436,18 +436,19 @@ function distributeWorkload(plays, gamesPerPlay) {
 }
 
 // Parallel simulation function using worker threads
-async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, deckCount) {
+async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, deckCount, skipCard = 0) {
   const totalGames = plays * gamesPerPlay;
   const totalHands = totalGames * handsPerGame;
   const startTime = Date.now();
   
-  console.log(`Starting parallel simulation: ${plays} plays × ${gamesPerPlay} games × ${handsPerGame} hands = ${totalGames} total games (${totalHands} hands)`);
+  console.log(`Starting parallel simulation: ${plays} plays × ${gamesPerPlay} games × ${handsPerGame} hands = ${totalGames} total games (${totalHands} hands), skip ${skipCard} cards`);
   
   // Distribute workload across CPU cores
   const workloads = distributeWorkload(plays, gamesPerPlay);
   console.log(`Using ${workloads.length} worker threads for parallel processing (${NUM_CORES} CPU cores available)`);
   
   const aggregatedResults = [];
+  const allSkippedCards = []; // Collect all skipped cards
   
   try {
     // Create workers and run simulation in parallel
@@ -473,7 +474,8 @@ async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, de
                 playNumber: parseInt(playNumber),
                 gameNumbers,
                 handsPerGame,
-                deckCount
+                deckCount,
+                skipCard
               }
             });
             
@@ -481,6 +483,14 @@ async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, de
               if (result.success) {
                 workerResults.push(...result.results);
                 playResolve();
+              } else if (result.type === 'skippedCards') {
+                // Collect skipped cards information
+                allSkippedCards.push({
+                  playNumber: result.playNumber,
+                  gameNumber: result.gameNumber,
+                  skippedCards: result.skippedCards
+                });
+                console.log(`🎴 Play ${result.playNumber}, Game ${result.gameNumber}: Skipped cards: ${result.skippedCards.join(', ')}`);
               } else {
                 playReject(new Error(result.error));
               }
@@ -529,6 +539,11 @@ async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, de
       playGames.sort((a, b) => a.gameNumber - b.gameNumber);
       
       for (const gameResult of playGames) {
+        // Find skipped cards for this game
+        const gameSkippedCards = allSkippedCards.find(
+          sc => sc.playNumber === play && sc.gameNumber === gameResult.gameNumber
+        );
+
         const gameObj = {
           gameNumber: gameResult.gameNumber,
           gameId: null,
@@ -538,7 +553,8 @@ async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, de
           tieWins: gameResult.tieWins,
           bankerPairs: gameResult.bankerPairs,
           playerPairs: gameResult.playerPairs,
-          hands: gameResult.hands
+          hands: gameResult.hands,
+          skippedCards: gameSkippedCards ? gameSkippedCards.skippedCards : []
         };
         
         // Insert game record

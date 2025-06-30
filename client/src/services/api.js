@@ -2,10 +2,10 @@ const API_BASE_URL = 'http://localhost:3001/api';
 
 class BaccaratAPI {
   // Start a new simulation
-  static async startSimulation(plays, gamesPerPlay, handsPerGame, deckCount = 8, logger = null) {
+  static async startSimulation(plays, gamesPerPlay, handsPerGame, deckCount = 8, skipCard = 0, logger = null) {
     try {
       if (logger) {
-        logger(`🚀 Starting simulation: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks`);
+        logger(`🚀 Starting simulation: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks, skip ${skipCard} cards`);
         logger(`📡 Sending request to ${API_BASE_URL}/simulations`);
       }
 
@@ -13,7 +13,8 @@ class BaccaratAPI {
         plays,
         gamesPerPlay,
         handsPerGame,
-        deckCount
+        deckCount,
+        skipCard
       };
       console.log(`link is ${API_BASE_URL}/simulations`);
       const response = await fetch(`${API_BASE_URL}/simulations`, {

@@ -16,12 +16,20 @@ export function LogProvider({ children }) {
     setLogs((prevLogs) => [...prevLogs, `[${timestamp}] \n ${message}`]);
   };
 
+  // Function specifically for skipped cards logging
+  const addSkippedCardsLog = async (playNumber, gameNumber, skippedCards) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const message = `🎴 第${playNumber}局 第${gameNumber}遊戲 飛牌: ${skippedCards.join(', ')}`;
+    await new Promise(resolve => setTimeout(resolve, 100));
+    setLogs((prevLogs) => [...prevLogs, `[${timestamp}] \n ${message}`]);
+  };
+
   const clearLogs = () => {
     setLogs([]);
   };
 
   return (
-    <LogContext.Provider value={{ logs, addLog, clearLogs }}>
+    <LogContext.Provider value={{ logs, addLog, addSkippedCardsLog, clearLogs }}>
       {children}
     </LogContext.Provider>
   );

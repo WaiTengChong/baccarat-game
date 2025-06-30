@@ -330,7 +330,7 @@ const View = ({
             </h3>
           </div>
         </Card>
-        <MatchingData matchingData={allGamesConsecutiveWinsData} />
+        <MatchingData matchingData={allGamesConsecutiveWinsData} gameResults={gameResults} />
         <div className="table-view-content">
           <Card className="table-view-card">
             <Table
@@ -434,6 +434,7 @@ const View = ({
               );
             })}
           </div>
+          <MatchingData matchingData={allGamesConsecutiveWinsData} gameResults={detailedViewData} />
         </div>
       </div>
     );

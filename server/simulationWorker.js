@@ -114,12 +114,37 @@ function hasPair(cards) {
   return cards.length >= 2 && cards[0].value === cards[1].value;
 }
 
+// Helper function to format card for display
+function formatCard(card) {
+  return `${card.value}${card.suit}`;
+}
+
 // Worker function to simulate a batch of games
-function simulateGameBatch(playNumber, gameNumbers, handsPerGame, deckCount) {
+function simulateGameBatch(playNumber, gameNumbers, handsPerGame, deckCount, skipCard = 0) {
   const results = [];
   
   for (const gameNumber of gameNumbers) {
     let deck = shuffleDeck(createDeck(deckCount));
+    
+    // Skip cards if specified and log them
+    const skippedCards = [];
+    for (let i = 0; i < skipCard; i++) {
+      if (deck.length > 0) {
+        const skippedCard = deck.pop();
+        skippedCards.push(skippedCard);
+      }
+    }
+    
+    // Send skipped cards info back to main thread for logging
+    if (skippedCards.length > 0) {
+      parentPort.postMessage({
+        type: 'skippedCards',
+        playNumber,
+        gameNumber,
+        skippedCards: skippedCards.map(formatCard)
+      });
+    }
+    
     const gameHands = [];
     let bankerWins = 0, playerWins = 0, tieWins = 0;
     let bankerPairs = 0, playerPairs = 0;
@@ -167,8 +192,8 @@ function simulateGameBatch(playNumber, gameNumbers, handsPerGame, deckCount) {
 
 // Main worker execution
 try {
-  const { playNumber, gameNumbers, handsPerGame, deckCount } = workerData;
-  const results = simulateGameBatch(playNumber, gameNumbers, handsPerGame, deckCount);
+  const { playNumber, gameNumbers, handsPerGame, deckCount, skipCard } = workerData;
+  const results = simulateGameBatch(playNumber, gameNumbers, handsPerGame, deckCount, skipCard);
   parentPort.postMessage({ success: true, results });
 } catch (error) {
   parentPort.postMessage({ success: false, error: error.message });

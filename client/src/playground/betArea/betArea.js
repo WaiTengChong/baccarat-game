@@ -26,7 +26,8 @@ function convertNewAPIResultsToFrontend(apiResponse) {
       tieWins: game.tieWins,
       bankerPairs: game.bankerPairs,
       playerPairs: game.playerPairs,
-      hands: game.hands // Full hands data is now included
+      hands: game.hands, // Full hands data is now included
+      skippedCards: game.skippedCards || [] // Include skipped cards data
     }))
   }));
 }
@@ -40,17 +41,19 @@ const BetArea = ({ onGameStart, onResetGame }) => {
   const [progress, setProgress] = useState(0);
   const [simulationStatus, setSimulationStatus] = useState('');
   const { addLog, clearLogs } = useContext(LogContext);
+  const [skipCard, setSkipCard] = useState(0);
 
   const handlePlay = async () => {
     console.log('Starting game with:', {
       plays,
       gamesPerPlay,
       handsPerGame,
-      deckCount
+      deckCount,
+      skipCard
     });
 
     clearLogs();
-    addLog(`運行 ${plays}, 局數 ${gamesPerPlay}, 手 ${handsPerGame}`);
+    addLog(`運行 ${plays}, 局數 ${gamesPerPlay}, 手 ${handsPerGame}, 飛牌數 ${skipCard}`);
     
     setIsPlaying(true);
     setProgress(0);
@@ -58,7 +61,7 @@ const BetArea = ({ onGameStart, onResetGame }) => {
     
     try {
       // Start simulation on backend with logging - now returns complete data
-      addLog(`🚀 Starting simulation: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks`);
+      addLog(`🚀 Starting simulation: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks, skip ${skipCard} cards`);
       setSimulationStatus('Running simulation...');
       setProgress(50); // Show some progress
       
@@ -67,10 +70,22 @@ const BetArea = ({ onGameStart, onResetGame }) => {
         gamesPerPlay, 
         handsPerGame, 
         deckCount,
+        skipCard,
         addLog  // Pass the logger
       );
       
       console.log('API Response:', response);
+      
+      // Log skipped cards if any
+      if (response.results) {
+        response.results.forEach(play => {
+          play.games.forEach(game => {
+            if (game.skippedCards && game.skippedCards.length > 0) {
+              addLog(`🎴 第${play.playNumber}局 第${game.gameNumber}遊戲 飛牌: ${game.skippedCards.join(', ')}`);
+            }
+          });
+        });
+      }
       
       setProgress(100);
       setSimulationStatus('Simulation completed!');
@@ -159,6 +174,18 @@ const BetArea = ({ onGameStart, onResetGame }) => {
             max={70}
             value={handsPerGame}
             onChange={(value) => setHandsPerGame(value || 1)}
+            className="control-input"
+            disabled={isPlaying}
+          />
+        </div>
+        
+        <div className="control-group">
+          <Text className="control-label">飛牌數:</Text>
+          <InputNumber
+            min={0}
+            max={10}
+            value={skipCard}
+            onChange={(value) => setSkipCard(value || 0)}
             className="control-input"
             disabled={isPlaying}
           />
