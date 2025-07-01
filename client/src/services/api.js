@@ -1,11 +1,11 @@
 const API_BASE_URL = 'http://localhost:3001/api';
 
 class BaccaratAPI {
-  // Start a new simulation
+  // Start a new simulation (now returns summary data only)
   static async startSimulation(plays, gamesPerPlay, handsPerGame, deckCount = 8, skipCard = 0, logger = null) {
     try {
       if (logger) {
-        logger(`🚀 Starting simulation: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks, skip ${skipCard} cards`);
+        logger(`🚀 Starting optimized simulation: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks, skip ${skipCard} cards`);
         logger(`📡 Sending request to ${API_BASE_URL}/simulations`);
       }
 
@@ -16,7 +16,7 @@ class BaccaratAPI {
         deckCount,
         skipCard
       };
-      console.log(`link is ${API_BASE_URL}/simulations`);
+      
       const response = await fetch(`${API_BASE_URL}/simulations`, {
         method: 'POST',
         headers: {
@@ -35,8 +35,9 @@ class BaccaratAPI {
 
       const result = await response.json();
       if (logger) {
-        logger(`✅ Simulation started successfully with ID: ${result.simulationId}`);
-        logger(`📊 Expected total hands: ${plays * gamesPerPlay * handsPerGame}`);
+        logger(`✅ Optimized simulation completed with ID: ${result.simulationId}`);
+        logger(`📊 Summary data loaded (detailed hands available on-demand)`);
+        logger(`🔥 Response size significantly reduced for performance`);
       }
 
       return result;
@@ -159,6 +160,75 @@ class BaccaratAPI {
       console.error('Error getting game hands:', error);
       if (logger) {
         logger(`❌ Error loading game hands: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  // NEW: Get games for a specific play with pre-computed table data (optimized)
+  static async getPlayGames(simulationId, playNumber, page = 1, pageSize = 1000, logger = null) {
+    try {
+      if (logger) {
+        logger(`📋 Loading games for simulation ${simulationId}, play ${playNumber} (page ${page})`);
+      }
+
+      const response = await fetch(`${API_BASE_URL}/simulations/${simulationId}/plays/${playNumber}/games?page=${page}&pageSize=${pageSize}`);
+      
+      if (!response.ok) {
+        const errorMsg = `HTTP error! status: ${response.status}`;
+        if (logger) {
+          logger(`❌ Play games fetch failed: ${errorMsg}`);
+        }
+        throw new Error(errorMsg);
+      }
+
+      const result = await response.json();
+      if (logger) {
+        const gameCount = result.games ? result.games.length : 0;
+        const pagination = result.pagination || {};
+        logger(`✅ Loaded ${gameCount} games for play ${playNumber} (page ${pagination.page}/${pagination.totalPages})`);
+        logger(`📊 Pre-computed table data ready - no frontend processing needed!`);
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error getting play games:', error);
+      if (logger) {
+        logger(`❌ Error loading play games: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  // NEW: Get consecutive wins analysis data for a specific play
+  static async getPlayConsecutiveAnalysis(simulationId, playNumber, logger = null) {
+    try {
+      if (logger) {
+        logger(`📊 Loading consecutive wins analysis for simulation ${simulationId}, play ${playNumber}`);
+      }
+
+      const response = await fetch(`${API_BASE_URL}/simulations/${simulationId}/plays/${playNumber}/consecutive-analysis`);
+      
+      if (!response.ok) {
+        const errorMsg = `HTTP error! status: ${response.status}`;
+        if (logger) {
+          logger(`❌ Consecutive analysis fetch failed: ${errorMsg}`);
+        }
+        throw new Error(errorMsg);
+      }
+
+      const result = await response.json();
+      if (logger) {
+        const gameCount = result.games ? result.games.length : 0;
+        const totalHands = result.games ? result.games.reduce((sum, g) => sum + g.hands.length, 0) : 0;
+        logger(`✅ Loaded consecutive analysis for play ${playNumber}: ${gameCount} games, ${totalHands} hands`);
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error getting consecutive analysis:', error);
+      if (logger) {
+        logger(`❌ Error loading consecutive analysis: ${error.message}`);
       }
       throw error;
     }

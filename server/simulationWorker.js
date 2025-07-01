@@ -119,11 +119,11 @@ function formatCard(card) {
   return `${card.value}${card.suit}`;
 }
 
-// Worker function to simulate a batch of games
-function simulateGameBatch(playNumber, gameNumbers, handsPerGame, deckCount, skipCard = 0) {
+// Memory-optimized worker function that only returns summary statistics
+function simulateGameBatchOptimized(workload, handsPerGame, deckCount, skipCard = 0, optimizedMode = false) {
   const results = [];
   
-  for (const gameNumber of gameNumbers) {
+  for (const { playNumber, gameNumber } of workload) {
     let deck = shuffleDeck(createDeck(deckCount));
     
     // Skip cards if specified and log them
@@ -145,7 +145,178 @@ function simulateGameBatch(playNumber, gameNumbers, handsPerGame, deckCount, ski
       });
     }
     
-    const gameHands = [];
+    // Only store summary statistics to minimize memory usage
+    let bankerWins = 0, playerWins = 0, tieWins = 0;
+    let bankerPairs = 0, playerPairs = 0;
+    
+    // For consecutive analysis, we only need results, not full hand details
+    const handsForAnalysis = optimizedMode ? [] : null;
+    
+    for (let hand = 1; hand <= handsPerGame; hand++) {
+      if (deck.length < 20) {
+        deck = shuffleDeck(createDeck(deckCount));
+      }
+      
+      const handResult = playBaccaratHand(deck);
+      deck = handResult.remainingDeck;
+      
+      // Count results
+      if (handResult.result === 'Banker') bankerWins++;
+      else if (handResult.result === 'Player') playerWins++;
+      else tieWins++;
+      
+      // Count pairs
+      if (hasPair(handResult.bankerCards)) bankerPairs++;
+      if (hasPair(handResult.playerCards)) playerPairs++;
+      
+      // In optimized mode, only store minimal data for consecutive analysis
+      if (optimizedMode && handsForAnalysis) {
+        handsForAnalysis.push({
+          handNumber: hand,
+          result: handResult.result
+        });
+      } else if (!optimizedMode) {
+        // Legacy mode: store full hand details (causes memory issues)
+        if (!handsForAnalysis) handsForAnalysis = [];
+        handsForAnalysis.push({
+          handNumber: hand,
+          ...handResult,
+          bankerPair: hasPair(handResult.bankerCards),
+          playerPair: hasPair(handResult.playerCards)
+        });
+      }
+    }
+    
+    const gameResult = {
+      playNumber,
+      gameNumber,
+      totalHands: handsPerGame,
+      bankerWins,
+      playerWins,
+      tieWins,
+      bankerPairs,
+      playerPairs
+    };
+    
+    // Include appropriate hands data based on mode
+    if (optimizedMode) {
+      // In optimized mode, only include minimal data for consecutive analysis
+      gameResult.handsForAnalysis = handsForAnalysis;
+    } else {
+      // Legacy mode: include full hands data
+      gameResult.hands = handsForAnalysis;
+    }
+    
+    results.push(gameResult);
+  }
+  
+  return results;
+}
+
+// Function to compute consecutive wins analysis locally in worker
+function computeConsecutiveWinsAnalysis(allHandResults) {
+  if (!allHandResults || allHandResults.length === 0) return { 莊: {}, 閑: {} };
+  
+  // Convert hand results to Big Road format
+  const roadGrid = [];
+  let currentColumn = 0;
+  let currentRow = 0;
+  let lastNonTieResult = null;
+
+  allHandResults.forEach((hand) => {
+    if (hand.result === "Tie") {
+      // Ties are marked on the previous non-tie result
+      if (roadGrid.length > 0) {
+        for (let i = roadGrid.length - 1; i >= 0; i--) {
+          if (roadGrid[i].result !== "Tie") {
+            roadGrid[i].tieCount = (roadGrid[i].tieCount || 0) + 1;
+            break;
+          }
+        }
+      }
+    } else {
+      // Banker or Player result
+      const outcome = hand.result === "Player" ? "閑" : "莊";
+      
+      if (lastNonTieResult && lastNonTieResult.result === hand.result) {
+        // Same as previous, continue in same column
+        currentRow++;
+      } else {
+        // Different result or first non-tie result, start new column
+        if (lastNonTieResult) {
+          currentColumn++;
+          currentRow = 0;
+        }
+      }
+
+      roadGrid.push({
+        ...hand,
+        outcome,
+        column: currentColumn,
+        row: currentRow,
+        tieCount: 0,
+      });
+
+      lastNonTieResult = hand;
+    }
+  });
+
+  // Count consecutive wins by column
+  const columnCounts = { 莊: {}, 閑: {} };
+  const columns = {};
+
+  // Group results by column
+  roadGrid.forEach((item) => {
+    if (!columns[item.column]) {
+      columns[item.column] = [];
+    }
+    columns[item.column].push(item);
+  });
+
+  // Count consecutive wins in each column
+  Object.values(columns).forEach((column) => {
+    if (column.length > 0) {
+      const columnType = column[0].outcome;
+      const columnLength = column.length;
+
+      if (!columnCounts[columnType][columnLength]) {
+        columnCounts[columnType][columnLength] = 0;
+      }
+      columnCounts[columnType][columnLength]++;
+    }
+  });
+
+  return columnCounts;
+}
+
+// MEGA-optimized worker function for very large simulations
+function simulateGameBatchMegaOptimized(workload, handsPerGame, deckCount, skipCard = 0) {
+  const results = [];
+  
+  for (const { playNumber, gameNumber } of workload) {
+    let deck = shuffleDeck(createDeck(deckCount));
+    
+    // Skip cards if specified
+    const skippedCards = [];
+    for (let i = 0; i < skipCard; i++) {
+      if (deck.length > 0) {
+        const skippedCard = deck.pop();
+        skippedCards.push(skippedCard);
+      }
+    }
+    
+    // Send skipped cards info
+    if (skippedCards.length > 0) {
+      parentPort.postMessage({
+        type: 'skippedCards',
+        playNumber,
+        gameNumber,
+        skippedCards: skippedCards.map(formatCard)
+      });
+    }
+    
+    // Run all hands and store only results (not full hand data)
+    const handResults = [];
     let bankerWins = 0, playerWins = 0, tieWins = 0;
     let bankerPairs = 0, playerPairs = 0;
     
@@ -166,14 +337,17 @@ function simulateGameBatch(playNumber, gameNumbers, handsPerGame, deckCount, ski
       if (hasPair(handResult.bankerCards)) bankerPairs++;
       if (hasPair(handResult.playerCards)) playerPairs++;
       
-      gameHands.push({
+      // Store only result for consecutive analysis
+      handResults.push({
         handNumber: hand,
-        ...handResult,
-        bankerPair: hasPair(handResult.bankerCards),
-        playerPair: hasPair(handResult.playerCards)
+        result: handResult.result
       });
     }
     
+    // Compute consecutive wins analysis locally
+    const consecutiveWins = computeConsecutiveWinsAnalysis(handResults);
+    
+    // Return only summary data + pre-computed consecutive wins
     results.push({
       playNumber,
       gameNumber,
@@ -183,7 +357,7 @@ function simulateGameBatch(playNumber, gameNumbers, handsPerGame, deckCount, ski
       tieWins,
       bankerPairs,
       playerPairs,
-      hands: gameHands
+      consecutiveWins // Pre-computed analysis
     });
   }
   
@@ -192,9 +366,29 @@ function simulateGameBatch(playNumber, gameNumbers, handsPerGame, deckCount, ski
 
 // Main worker execution
 try {
-  const { playNumber, gameNumbers, handsPerGame, deckCount, skipCard } = workerData;
-  const results = simulateGameBatch(playNumber, gameNumbers, handsPerGame, deckCount, skipCard);
-  parentPort.postMessage({ success: true, results });
+  const { workload, playNumber, gameNumbers, handsPerGame, deckCount, skipCard, optimizedMode, megaOptimizedMode } = workerData;
+  
+  let results;
+  
+  if (megaOptimizedMode && workload) {
+    // MEGA optimization: pre-compute everything locally, return only final stats
+    console.log(`Worker running in MEGA-optimized mode for ${workload.length} games`);
+    results = simulateGameBatchMegaOptimized(workload, handsPerGame, deckCount, skipCard);
+    parentPort.postMessage({ success: true, megaData: results });
+  } else if (optimizedMode && workload) {
+    // Standard optimization: minimal memory usage
+    console.log(`Worker running in optimized mode for ${workload.length} games`);
+    results = simulateGameBatchOptimized(workload, handsPerGame, deckCount, skipCard, true);
+    parentPort.postMessage({ success: true, summaryData: results });
+  } else if (playNumber && gameNumbers) {
+    // Legacy mode: full hands data (for backwards compatibility)
+    console.log(`Worker running in legacy mode for play ${playNumber} with ${gameNumbers.length} games`);
+    results = simulateGameBatchOptimized([...gameNumbers.map(gn => ({playNumber, gameNumber: gn}))], handsPerGame, deckCount, skipCard, false);
+    parentPort.postMessage({ success: true, results });
+  } else {
+    throw new Error('Invalid worker data: missing required parameters');
+  }
 } catch (error) {
+  console.error('Worker error:', error);
   parentPort.postMessage({ success: false, error: error.message });
 } 

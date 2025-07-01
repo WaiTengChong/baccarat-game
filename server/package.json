@@ -5,7 +5,9 @@
   "license": "MIT",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start:large": "node --max-old-space-size=8192 index.js",
+    "dev": "nodemon index.js",
+    "dev:large": "nodemon --exec \"node --max-old-space-size=8192\" index.js"
   },
   "devDependencies": {
     "axios": "^1.10.0",

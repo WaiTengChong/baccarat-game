@@ -65,7 +65,7 @@ function initTempDatabase() {
       // Create tables with proper synchronization
       db.serialize(() => {
         let tablesCreated = 0;
-        const totalTables = 3;
+        const totalTables = 4;
         
         const checkComplete = (err) => {
           if (err) {
@@ -123,7 +123,43 @@ function initTempDatabase() {
           progress INTEGER,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           completed_at DATETIME
+        )`, (err) => {
+          if (err) {
+            checkComplete(err);
+            return;
+          }
+          
+          // Create consecutive_wins table for storing pre-computed analysis
+          db.run(`CREATE TABLE consecutive_wins (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            simulation_id TEXT,
+            play_number INTEGER,
+            consecutive_length INTEGER,
+            winner_type TEXT,
+            count INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (simulation_id) REFERENCES simulations (id)
         )`, checkComplete);
+          
+          // Add indexes for better query performance
+          db.run(`CREATE INDEX IF NOT EXISTS idx_games_simulation_play ON games (simulation_id, play_number)`, (indexErr) => {
+            if (indexErr) console.log('Index creation warning:', indexErr.message);
+          });
+          
+          db.run(`CREATE INDEX IF NOT EXISTS idx_hands_game_id ON hands (game_id)`, (indexErr) => {
+            if (indexErr) console.log('Index creation warning:', indexErr.message);
+          });
+          
+          db.run(`CREATE INDEX IF NOT EXISTS idx_hands_game_hand ON hands (game_id, hand_number)`, (indexErr) => {
+            if (indexErr) console.log('Index creation warning:', indexErr.message);
+          });
+          
+          db.run(`CREATE INDEX IF NOT EXISTS idx_consecutive_wins ON consecutive_wins (simulation_id, play_number)`, (indexErr) => {
+            if (indexErr) console.log('Index creation warning:', indexErr.message);
+          });
+          
+          checkComplete();
+        });
       });
     });
   });
@@ -284,7 +320,7 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Start a new simulation
+// Start a new simulation (ultra-optimized for large datasets)
 app.post('/api/simulations', async (req, res) => {
   try {
     const { plays, gamesPerPlay, handsPerGame, deckCount = 8, skipCard = 0 } = req.body;
@@ -298,6 +334,7 @@ app.post('/api/simulations', async (req, res) => {
       return res.status(503).json({ error: 'Database not ready. Please try again in a moment.' });
     }
     
+    const totalGames = plays * gamesPerPlay;
     const simulationId = `sim_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     // Insert simulation record
@@ -312,14 +349,23 @@ app.post('/api/simulations', async (req, res) => {
       );
     });
 
-    // Run simulation synchronously so we can return full data structure
-    const simulationData = await runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, deckCount, skipCard);
+    // Choose optimization level based on simulation size
+    let summaryData;
+    if (totalGames >= 1000) { // Lowered threshold for testing
+      console.log(`🚀 Using MEGA optimization for ${totalGames} games (testing mode)`);
+      summaryData = await runSimulationMegaOptimized(simulationId, plays, gamesPerPlay, handsPerGame, deckCount, skipCard);
+    } else {
+      console.log(`🔧 Using standard optimization for ${totalGames} games`);
+      summaryData = await runSimulationOptimized(simulationId, plays, gamesPerPlay, handsPerGame, deckCount, skipCard);
+    }
     
     res.json({ 
       simulationId,
       status: 'completed',
       message: 'Simulation completed successfully',
-      results: simulationData
+      results: summaryData,
+      totalGames,
+      optimizationLevel: totalGames >= 10000 ? 'mega' : 'standard'
     });
   } catch (error) {
     console.error('Simulation start error:', error);
@@ -393,6 +439,209 @@ app.get('/api/games/:gameId/hands', (req, res) => {
   );
 });
 
+// NEW: Get play summary data only (no hands)
+app.get('/api/simulations/:id/plays', (req, res) => {
+  const { id } = req.params;
+  
+  db.all(
+    `SELECT 
+       play_number,
+       COUNT(*) as game_count,
+       SUM(total_hands) as total_hands,
+       SUM(banker_wins) as total_banker_wins,
+       SUM(player_wins) as total_player_wins,
+       SUM(tie_wins) as total_tie_wins,
+       SUM(banker_pairs) as total_banker_pairs,
+       SUM(player_pairs) as total_player_pairs
+     FROM games 
+     WHERE simulation_id = ? 
+     GROUP BY play_number 
+     ORDER BY play_number`,
+    [id],
+    (err, plays) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      res.json({ plays });
+    }
+  );
+});
+
+// NEW: Get games for a specific play with pre-computed table data (optimized for large datasets)
+app.get('/api/simulations/:id/plays/:playNumber/games', (req, res) => {
+  const { id, playNumber } = req.params;
+  const { page = 1, pageSize = 1000 } = req.query; // Add pagination support
+  
+  const offset = (page - 1) * pageSize;
+  
+  db.all(
+    `SELECT id as game_id, game_number, total_hands, banker_wins, player_wins, tie_wins, banker_pairs, player_pairs
+     FROM games 
+     WHERE simulation_id = ? AND play_number = ?
+     ORDER BY game_number
+     LIMIT ? OFFSET ?`,
+    [id, parseInt(playNumber), parseInt(pageSize), offset],
+    (err, games) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      
+      // Get total count for pagination
+      db.get(
+        'SELECT COUNT(*) as total FROM games WHERE simulation_id = ? AND play_number = ?',
+        [id, playNumber],
+        (countErr, countResult) => {
+          if (countErr) {
+            return res.status(500).json({ error: countErr.message });
+          }
+          
+          const totalGames = countResult.total;
+          const totalPages = Math.ceil(totalGames / pageSize);
+          
+          // Pre-compute table data on backend for instant frontend display
+          const tableData = games.map((game, index) => {
+            const totalHands = game.total_hands;
+            const bankerWins = game.banker_wins;
+            const playerWins = game.player_wins;
+            const tieWins = game.tie_wins;
+            const bankerPairs = game.banker_pairs;
+            const playerPairs = game.player_pairs;
+            
+            return {
+              key: offset + index + 1,
+              gameNumber: game.game_number,
+              gameId: game.game_id,
+              totalHands: totalHands,
+              bankerWins: `${bankerWins} (${
+                totalHands > 0 ? ((bankerWins / totalHands) * 100).toFixed(1) : 0
+              }%)`,
+              playerWins: `${playerWins} (${
+                totalHands > 0 ? ((playerWins / totalHands) * 100).toFixed(1) : 0
+              }%)`,
+              tieWins: `${tieWins} (${
+                totalHands > 0 ? ((tieWins / totalHands) * 100).toFixed(1) : 0
+              }%)`,
+              bankerPair: `${bankerPairs} (${
+                totalHands > 0 ? ((bankerPairs / totalHands) * 100).toFixed(1) : 0
+              }%)`,
+              playerPair: `${playerPairs} (${
+                totalHands > 0 ? ((playerPairs / totalHands) * 100).toFixed(1) : 0
+              }%)`,
+              // Raw data for potential game detail viewing
+              rawData: {
+                totalHands,
+                bankerWins,
+                playerWins,
+                tieWins,
+                bankerPairs,
+                playerPairs
+              }
+            };
+          });
+          
+          console.log(`📊 Pre-computed table data for play ${playNumber}: ${games.length} games (page ${page}/${totalPages})`);
+          
+          // Fetch consecutive wins data for this play
+          db.all(
+            'SELECT consecutive_length, winner_type, count FROM consecutive_wins WHERE simulation_id = ? AND play_number = ?',
+            [id, parseInt(playNumber)],
+            (consecutiveErr, consecutiveRows) => {
+              let consecutiveWinsData = null;
+              
+              if (!consecutiveErr && consecutiveRows && consecutiveRows.length > 0) {
+                // Convert database format to chart format
+                const chartData = [];
+                const maxStreak = Math.max(...consecutiveRows.map(row => row.consecutive_length), 5);
+                
+                for (let i = 1; i <= maxStreak; i++) {
+                  const bankerRow = consecutiveRows.find(row => row.consecutive_length === i && row.winner_type === '莊');
+                  const playerRow = consecutiveRows.find(row => row.consecutive_length === i && row.winner_type === '閑');
+                  
+                  chartData.push({
+                    x: i,
+                    y: bankerRow ? bankerRow.count : 0,
+                    type: "莊",
+                  });
+                  chartData.push({
+                    x: i,
+                    y: playerRow ? playerRow.count : 0,
+                    type: "閑",
+                  });
+                }
+                consecutiveWinsData = chartData;
+                console.log(`📊 Loaded pre-computed consecutive wins data for play ${playNumber}`);
+              }
+              
+              res.json({ 
+                playNumber: parseInt(playNumber),
+                tableData: tableData, // Pre-computed table data!
+                consecutiveWinsData: consecutiveWinsData, // Pre-computed consecutive wins data!
+                pagination: {
+                  page: parseInt(page),
+                  pageSize: parseInt(pageSize),
+                  total: totalGames,
+                  totalPages: totalPages,
+                  hasMore: page < totalPages
+                },
+                // Also include raw games data for backward compatibility
+                games: games.map(game => ({
+                  gameNumber: game.game_number,
+                  gameId: game.game_id,
+                  totalHands: game.total_hands,
+                  bankerWins: game.banker_wins,
+                  playerWins: game.player_wins,
+                  tieWins: game.tie_wins,
+                  bankerPairs: game.banker_pairs,
+                  playerPairs: game.player_pairs
+                }))
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// NEW: Get hands for consecutive wins analysis for a specific play
+app.get('/api/simulations/:id/plays/:playNumber/consecutive-analysis', (req, res) => {
+  const { id, playNumber } = req.params;
+  
+  db.all(
+    `SELECT h.game_id, h.hand_number, h.result, g.game_number
+     FROM hands h
+     JOIN games g ON h.game_id = g.id
+     WHERE g.simulation_id = ? AND g.play_number = ?
+     ORDER BY g.game_number, h.hand_number`,
+    [id, parseInt(playNumber)],
+    (err, hands) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      
+      // Group hands by game for analysis
+      const gameGroups = {};
+      hands.forEach(hand => {
+        if (!gameGroups[hand.game_number]) {
+          gameGroups[hand.game_number] = [];
+        }
+        gameGroups[hand.game_number].push({
+          handNumber: hand.hand_number,
+          result: hand.result
+        });
+      });
+      
+      res.json({ 
+        playNumber: parseInt(playNumber),
+        games: Object.entries(gameGroups).map(([gameNumber, gameHands]) => ({
+          gameNumber: parseInt(gameNumber),
+          hands: gameHands
+        }))
+      });
+    }
+  );
+});
+
 // Helper function to distribute work across CPU cores
 function distributeWorkload(plays, gamesPerPlay) {
   const totalGames = plays * gamesPerPlay;
@@ -435,7 +684,360 @@ function distributeWorkload(plays, gamesPerPlay) {
   return workloads;
 }
 
-// Parallel simulation function using worker threads
+// MEGA-optimized simulation for very large datasets (10,000+ games)
+async function runSimulationMegaOptimized(simulationId, plays, gamesPerPlay, handsPerGame, deckCount, skipCard = 0) {
+  const totalGames = plays * gamesPerPlay;
+  const totalHands = totalGames * handsPerGame;
+  const startTime = Date.now();
+  
+  console.log(`🚀 MEGA OPTIMIZATION: ${plays} plays × ${gamesPerPlay} games × ${handsPerGame} hands = ${totalGames} total games (${totalHands} hands)`);
+  console.log(`⚡ Skipping individual hand storage for maximum performance`);
+  
+  // Distribute workload across CPU cores
+  const workloads = distributeWorkload(plays, gamesPerPlay);
+  console.log(`Using ${workloads.length} worker threads for MEGA-optimized processing`);
+  
+  try {
+    // Create workers that compute everything locally and return only final statistics
+    const workerPromises = workloads.map((workload, workerIndex) => {
+      return new Promise((resolve, reject) => {
+        const worker = new Worker(path.join(__dirname, 'simulationWorker.js'), {
+          workerData: {
+            workload: workload.map(({playNumber, gameNumber}) => ({ playNumber, gameNumber })),
+            handsPerGame,
+            deckCount,
+            skipCard,
+            megaOptimizedMode: true // Flag for mega optimization
+          }
+        });
+        
+        worker.on('message', (result) => {
+          if (result.success) {
+            // Worker returns pre-computed analysis data
+            resolve(result.megaData);
+          } else if (result.type === 'skippedCards') {
+            console.log(`🎴 Play ${result.playNumber}, Game ${result.gameNumber}: Skipped cards: ${result.skippedCards.join(', ')}`);
+          } else {
+            reject(new Error(result.error));
+          }
+        });
+        
+        worker.on('error', reject);
+        worker.on('exit', (code) => {
+          if (code !== 0) {
+            reject(new Error(`Worker stopped with exit code ${code}`));
+          }
+        });
+      });
+    });
+    
+    // Wait for all workers to complete and get pre-computed data
+    console.log('Waiting for all MEGA-optimized workers to complete...');
+    const allWorkerResults = await Promise.all(workerPromises);
+    
+    // Flatten worker results - these contain pre-computed consecutive wins analysis
+    const flatResults = allWorkerResults.flat();
+    console.log(`Received ${flatResults.length} MEGA-optimized game results with pre-computed analysis`);
+    
+    // Store only game summaries to database (no individual hands)
+    console.log(`Storing ${flatResults.length} game summaries to database (no individual hands)...`);
+    let processedGames = 0;
+    
+    // Group results by play for efficient processing
+    const resultsByPlay = {};
+    flatResults.forEach(gameResult => {
+      if (!resultsByPlay[gameResult.playNumber]) {
+        resultsByPlay[gameResult.playNumber] = [];
+      }
+      resultsByPlay[gameResult.playNumber].push(gameResult);
+    });
+    
+    // Store to database and prepare response data
+    const summaryResults = [];
+    
+    for (let play = 1; play <= plays; play++) {
+      const playGames = resultsByPlay[play] || [];
+      playGames.sort((a, b) => a.gameNumber - b.gameNumber);
+      
+      // Aggregate consecutive wins data for this play
+      const playConsecutiveWins = { 莊: {}, 閑: {} };
+      
+      for (const gameResult of playGames) {
+        // Store game summary to database
+        await new Promise((resolve, reject) => {
+          db.run(
+            'INSERT INTO games (simulation_id, play_number, game_number, total_hands, banker_wins, player_wins, tie_wins, banker_pairs, player_pairs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [simulationId, gameResult.playNumber, gameResult.gameNumber, gameResult.totalHands, gameResult.bankerWins, gameResult.playerWins, gameResult.tieWins, gameResult.bankerPairs, gameResult.playerPairs],
+            function(err) {
+              if (err) return reject(err);
+              resolve();
+            }
+          );
+        });
+        
+        // Aggregate consecutive wins data (pre-computed by worker)
+        if (gameResult.consecutiveWins) {
+          for (const [type, counts] of Object.entries(gameResult.consecutiveWins)) {
+            for (const [length, count] of Object.entries(counts)) {
+              if (!playConsecutiveWins[type][length]) {
+                playConsecutiveWins[type][length] = 0;
+              }
+              playConsecutiveWins[type][length] += count;
+            }
+          }
+        }
+        
+        processedGames++;
+        if (processedGames % 5000 === 0) {
+          console.log(`Stored ${processedGames}/${flatResults.length} games to database...`);
+        }
+      }
+      
+      // Store consecutive wins data to database
+      for (const [type, counts] of Object.entries(playConsecutiveWins)) {
+        for (const [length, count] of Object.entries(counts)) {
+          if (count > 0) {
+            await new Promise((resolve, reject) => {
+              db.run(
+                'INSERT INTO consecutive_wins (simulation_id, play_number, consecutive_length, winner_type, count) VALUES (?, ?, ?, ?, ?)',
+                [simulationId, play, parseInt(length), type, count],
+                function(err) {
+                  if (err) return reject(err);
+                  resolve();
+                }
+              );
+            });
+          }
+        }
+      }
+      
+      // Convert consecutive wins data to chart format
+      const consecutiveWinsData = [];
+      const maxStreak = Math.max(
+        Math.max(...Object.keys(playConsecutiveWins["莊"]).map(Number), 0),
+        Math.max(...Object.keys(playConsecutiveWins["閑"]).map(Number), 0)
+      );
+      
+      for (let i = 1; i <= Math.max(maxStreak, 5); i++) {
+        consecutiveWinsData.push({
+          x: i,
+          y: playConsecutiveWins["莊"][i] || 0,
+          type: "莊",
+        });
+        consecutiveWinsData.push({
+          x: i,
+          y: playConsecutiveWins["閑"][i] || 0,
+          type: "閑",
+        });
+      }
+      
+      summaryResults.push({
+        playNumber: play,
+        games: playGames.map(game => ({
+          gameNumber: game.gameNumber,
+          totalHands: game.totalHands,
+          bankerWins: game.bankerWins,
+          playerWins: game.playerWins,
+          tieWins: game.tieWins,
+          bankerPairs: game.bankerPairs,
+          playerPairs: game.playerPairs,
+        })),
+        consecutiveWinsData: consecutiveWinsData // Pre-computed!
+      });
+      
+      // Update progress
+      const progress = Math.round((play / plays) * 100);
+      db.run(
+        'UPDATE simulations SET progress = ? WHERE id = ?',
+        [progress, simulationId]
+      );
+    }
+    
+    console.log(`✅ All ${flatResults.length} games stored to database successfully (MEGA mode)`);
+    
+    // Mark simulation as completed
+    db.run(
+      'UPDATE simulations SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?',
+      ['completed', simulationId]
+    );
+    
+    const endTime = Date.now();
+    const duration = (endTime - startTime) / 1000;
+    const handsPerSecond = Math.round(totalHands / duration);
+    
+    console.log(`🎉 MEGA-optimized simulation completed: ${summaryResults.length} plays processed in ${duration.toFixed(2)}s`);
+    console.log(`🚀 Performance: ${handsPerSecond} hands/second with ZERO individual hand storage`);
+    console.log(`💾 Database storage: Only ${flatResults.length} game summaries (no individual hands)`);
+    
+    return summaryResults;
+    
+  } catch (error) {
+    console.error('MEGA-optimized simulation error:', error);
+    db.run(
+      'UPDATE simulations SET status = ? WHERE id = ?',
+      ['error', simulationId]
+    );
+    throw error;
+  }
+}
+
+// Truly optimized simulation function that stores directly to DB without loading all hands into memory
+async function runSimulationOptimized(simulationId, plays, gamesPerPlay, handsPerGame, deckCount, skipCard = 0) {
+  const totalGames = plays * gamesPerPlay;
+  const totalHands = totalGames * handsPerGame;
+  const startTime = Date.now();
+  
+  console.log(`Starting memory-optimized simulation: ${plays} plays × ${gamesPerPlay} games × ${handsPerGame} hands = ${totalGames} total games (${totalHands} hands), skip ${skipCard} cards`);
+  
+  // Distribute workload across CPU cores
+  const workloads = distributeWorkload(plays, gamesPerPlay);
+  console.log(`Using ${workloads.length} worker threads for memory-optimized processing`);
+  
+  try {
+    // Create workers and run simulation in parallel with minimal memory usage
+    const workerPromises = workloads.map((workload, workerIndex) => {
+      return new Promise((resolve, reject) => {
+        const worker = new Worker(path.join(__dirname, 'simulationWorker.js'), {
+          workerData: {
+            workload: workload.map(({playNumber, gameNumber}) => ({ playNumber, gameNumber })),
+            handsPerGame,
+            deckCount,
+            skipCard,
+            optimizedMode: true // Flag for optimized mode
+          }
+        });
+        
+        worker.on('message', (result) => {
+          if (result.success) {
+            // Worker sends back only summary data - we'll store it to DB
+            resolve(result.summaryData);
+          } else if (result.type === 'skippedCards') {
+            console.log(`🎴 Play ${result.playNumber}, Game ${result.gameNumber}: Skipped cards: ${result.skippedCards.join(', ')}`);
+          } else {
+            reject(new Error(result.error));
+          }
+        });
+        
+        worker.on('error', reject);
+        worker.on('exit', (code) => {
+          if (code !== 0) {
+            reject(new Error(`Worker stopped with exit code ${code}`));
+          }
+        });
+      });
+    });
+    
+    // Wait for all workers to complete and get minimal summary data
+    console.log('Waiting for all memory-optimized workers to complete...');
+    const allWorkerResults = await Promise.all(workerPromises);
+    
+    // Flatten worker results and store to database efficiently
+    const flatResults = allWorkerResults.flat();
+    console.log(`Received ${flatResults.length} optimized game results from workers`);
+    
+    // Store data to database in batches to avoid memory issues
+    console.log(`Storing ${flatResults.length} games to database...`);
+    let processedGames = 0;
+    
+    for (const gameResult of flatResults) {
+      // Insert game record first
+      const gameId = await new Promise((resolve, reject) => {
+        db.run(
+          'INSERT INTO games (simulation_id, play_number, game_number, total_hands, banker_wins, player_wins, tie_wins, banker_pairs, player_pairs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [simulationId, gameResult.playNumber, gameResult.gameNumber, gameResult.totalHands, gameResult.bankerWins, gameResult.playerWins, gameResult.tieWins, gameResult.bankerPairs, gameResult.playerPairs],
+          function(err) {
+            if (err) return reject(err);
+            resolve(this.lastID);
+          }
+        );
+      });
+      
+      // Insert minimal hands data for consecutive analysis if available
+      if (gameResult.handsForAnalysis && gameResult.handsForAnalysis.length > 0) {
+        // Use a prepared statement for better performance with large datasets
+        const stmt = db.prepare('INSERT INTO hands (game_id, hand_number, result, player_total, banker_total, player_cards, banker_cards, banker_pair, player_pair) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        
+        try {
+          for (const hand of gameResult.handsForAnalysis) {
+            stmt.run([
+              gameId,
+              hand.handNumber,
+              hand.result,
+              0, // Minimal placeholder - not needed for consecutive analysis
+              0, // Minimal placeholder - not needed for consecutive analysis
+              '[]', // Empty array as placeholder
+              '[]', // Empty array as placeholder
+              false, // Not needed for consecutive analysis
+              false  // Not needed for consecutive analysis
+            ]);
+          }
+        } finally {
+          stmt.finalize();
+        }
+      }
+      
+      processedGames++;
+      if (processedGames % 1000 === 0) {
+        console.log(`Stored ${processedGames}/${flatResults.length} games to database...`);
+      }
+    }
+    
+    console.log(`✅ All ${flatResults.length} games stored to database successfully`);
+    
+    // Query database for summary data instead of loading from memory
+    const summaryResults = [];
+    for (let play = 1; play <= plays; play++) {
+      const games = await new Promise((resolve, reject) => {
+        db.all(
+          'SELECT game_number, total_hands, banker_wins, player_wins, tie_wins, banker_pairs, player_pairs FROM games WHERE simulation_id = ? AND play_number = ? ORDER BY game_number',
+          [simulationId, play],
+          (err, games) => {
+            if (err) return reject(err);
+            resolve(games.map(game => ({
+              gameNumber: game.game_number,
+              totalHands: game.total_hands,
+              bankerWins: game.banker_wins,
+              playerWins: game.player_wins,
+              tieWins: game.tie_wins,
+              bankerPairs: game.banker_pairs,
+              playerPairs: game.player_pairs,
+            })));
+          }
+        );
+      });
+      
+      summaryResults.push({
+        playNumber: play,
+        games: games
+      });
+    }
+    
+    // Mark simulation as completed
+    db.run(
+      'UPDATE simulations SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?',
+      ['completed', simulationId]
+    );
+    
+    const endTime = Date.now();
+    const duration = (endTime - startTime) / 1000;
+    const handsPerSecond = Math.round(totalHands / duration);
+    
+    console.log(`Memory-optimized simulation completed: ${summaryResults.length} plays processed in ${duration.toFixed(2)}s`);
+    console.log(`Performance: ${handsPerSecond} hands/second with minimal memory usage`);
+    
+    return summaryResults;
+    
+  } catch (error) {
+    console.error('Memory-optimized simulation error:', error);
+    db.run(
+      'UPDATE simulations SET status = ? WHERE id = ?',
+      ['error', simulationId]
+    );
+    throw error;
+  }
+}
+
+// Full simulation function using worker threads (for database population)
 async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, deckCount, skipCard = 0) {
   const totalGames = plays * gamesPerPlay;
   const totalHands = totalGames * handsPerGame;
@@ -641,6 +1243,7 @@ async function runSimulation(simulationId, plays, gamesPerPlay, handsPerGame, de
 async function startServer() {
   try {
     console.log('Starting Baccarat API Server...');
+    console.log(`💾 Node.js heap limit: ${Math.round(require('v8').getHeapStatistics().heap_size_limit / 1024 / 1024 / 1024 * 10) / 10}GB`);
     console.log('Cleaning up any existing databases...');
     
     // Clean up first

@@ -6,7 +6,11 @@
   "scripts": {
     "react-dev": "cd client && cross-env BROWSER=none yarn start",
     "server-dev": "cd server && yarn dev",
+    "server-dev-large": "cd server && yarn dev:large",
     "electron-dev": "concurrently -k \"yarn server-dev\" \"yarn react-dev\" \"cross-env ELECTRON_START_URL=http://localhost:3000 electron .\"",
+    "electron-dev-large": "concurrently -k \"yarn server-dev-large\" \"yarn react-dev\" \"cross-env ELECTRON_START_URL=http://localhost:3000 electron .\"",
+    "start-server": "cd server && yarn start",
+    "start-server-large": "cd server && yarn start:large",
     "build-react": "cd client && yarn build",
     "pack": "yarn build-react && electron-builder"
   },

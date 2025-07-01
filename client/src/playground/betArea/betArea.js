@@ -6,10 +6,9 @@ import "./betArea.css";
 
 const { Text, Title } = Typography;
 
-// Helper function to convert new API results to frontend format
-function convertNewAPIResultsToFrontend(apiResponse) {
-  // The new API returns results directly in the response.results array
-  // Each item in results array is a play with games array, each game has hands array
+// Helper function to convert optimized API results to frontend format
+function convertOptimizedAPIResultsToFrontend(apiResponse) {
+  // The API returns either standard optimized or mega-optimized data
   if (!apiResponse.results || !Array.isArray(apiResponse.results)) {
     console.error('Invalid API response structure:', apiResponse);
     return [];
@@ -19,16 +18,18 @@ function convertNewAPIResultsToFrontend(apiResponse) {
     playNumber: playData.playNumber,
     games: playData.games.map(game => ({
       gameNumber: game.gameNumber,
-      gameId: game.gameId,
+      gameId: game.gameId || null, // May not be present in summary data
       totalHands: game.totalHands,
       bankerWins: game.bankerWins,
       playerWins: game.playerWins,
       tieWins: game.tieWins,
       bankerPairs: game.bankerPairs,
       playerPairs: game.playerPairs,
-      hands: game.hands, // Full hands data is now included
-      skippedCards: game.skippedCards || [] // Include skipped cards data
-    }))
+      // No hands data in optimized response - will be loaded on-demand
+      skippedCards: game.skippedCards || [] // Include skipped cards data if available
+    })),
+    // Include pre-computed consecutive wins data if available (mega mode)
+    consecutiveWinsData: playData.consecutiveWinsData || null
   }));
 }
 
@@ -41,7 +42,7 @@ const BetArea = ({ onGameStart, onResetGame }) => {
   const [progress, setProgress] = useState(0);
   const [simulationStatus, setSimulationStatus] = useState('');
   const { addLog, clearLogs } = useContext(LogContext);
-  const [skipCard, setSkipCard] = useState(0);
+  const [skipCard, setSkipCard] = useState(10);
 
   const handlePlay = async () => {
     console.log('Starting game with:', {
@@ -76,22 +77,24 @@ const BetArea = ({ onGameStart, onResetGame }) => {
       
       console.log('API Response:', response);
       
-      // Log skipped cards if any
-      if (response.results) {
+      // Log skipped cards if any (from optimized response)
+      if (response.results && Array.isArray(response.results)) {
         response.results.forEach(play => {
-          play.games.forEach(game => {
-            if (game.skippedCards && game.skippedCards.length > 0) {
-              addLog(`🎴 第${play.playNumber}局 第${game.gameNumber}遊戲 飛牌: ${game.skippedCards.join(', ')}`);
-            }
-          });
+          if (play.games && Array.isArray(play.games)) {
+            play.games.forEach(game => {
+              if (game.skippedCards && Array.isArray(game.skippedCards) && game.skippedCards.length > 0) {
+                addLog(`🎴 第${play.playNumber}局 第${game.gameNumber}遊戲 飛牌: ${game.skippedCards.join(', ')}`);
+              }
+            });
+          }
         });
       }
       
       setProgress(100);
       setSimulationStatus('Simulation completed!');
       
-      // Convert new API results to frontend format
-      const frontendResults = convertNewAPIResultsToFrontend(response);
+      // Convert optimized API results to frontend format
+      const frontendResults = convertOptimizedAPIResultsToFrontend(response);
       
       // Create play cards data for the UI
       const newPlayCardsData = frontendResults.map(playData => ({
@@ -99,15 +102,15 @@ const BetArea = ({ onGameStart, onResetGame }) => {
         state: 'finish' // Mark as finished since simulation is complete
       }));
       
-      // Log completion
+      // Log completion - use totalHands from summary data since hands array is not available
       const totalHands = frontendResults.reduce((total, play) => 
         total + play.games.reduce((gameTotal, game) => 
-          gameTotal + game.hands.length, 0), 0);
+          gameTotal + (game.totalHands || 0), 0), 0);
       
       addLog(`✅ Simulation completed with ${frontendResults.length} plays and ${totalHands} total hands`);
       
-      // Pass results to parent component
-      onGameStart(plays, frontendResults, newPlayCardsData);
+      // Pass results to parent component including simulation ID and optimization info
+      onGameStart(plays, frontendResults, newPlayCardsData, response.simulationId, response.optimizationLevel, response.totalGames);
       
     } catch (error) {
       console.error('Simulation error:', error);
@@ -147,7 +150,7 @@ const BetArea = ({ onGameStart, onResetGame }) => {
           <Text className="control-label">運行:</Text>
           <InputNumber
             min={1}
-            max={5}
+            max={10}
             value={plays}
             onChange={(value) => setPlays(value || 1)}
             className="control-input"

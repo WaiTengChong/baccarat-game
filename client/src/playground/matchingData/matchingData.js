@@ -1,5 +1,7 @@
 import { Column } from '@ant-design/plots';
 import { Card } from 'antd';
+import React, { useEffect, useState } from 'react';
+import BaccaratAPI from '../../services/api';
 import useStyles from '../style.style';
 import './matchingData.css';
 
@@ -261,4 +263,182 @@ const MatchingData = ({
   );
 };
 
+// Function to analyze consecutive wins from API data (optimized for API response)
+const analyzeConsecutiveWinsFromAPI = (apiResponseData) => {
+  if (!apiResponseData || !apiResponseData.games) return [];
+
+  // Convert API response to display format
+  const convertGameResults = (apiData) => {
+    const converted = [];
+    let handId = 1;
+
+    apiData.games.forEach((game) => {
+      game.hands.forEach((hand) => {
+        converted.push({
+          id: handId++,
+          outcome: hand.result === "Player" ? "閑" : hand.result === "Banker" ? "莊" : "和",
+          type: hand.result.toLowerCase(),
+        });
+      });
+    });
+
+    return converted;
+  };
+
+  // Convert to Big Road grid logic (same as original)
+  const convertToroadtwo = (results) => {
+    if (!results.length) return [];
+
+    const grid = [];
+    let currentColumn = 0;
+    let currentRow = 0;
+    let lastNonTieResult = null;
+
+    results.forEach((result) => {
+      if (result.type === "tie") {
+        if (grid.length > 0) {
+          for (let i = grid.length - 1; i >= 0; i--) {
+            if (grid[i].type !== "tie") {
+              grid[i].tieCount = (grid[i].tieCount || 0) + 1;
+              break;
+            }
+          }
+        }
+      } else {
+        if (lastNonTieResult && lastNonTieResult.type === result.type) {
+          currentRow++;
+        } else {
+          if (lastNonTieResult) {
+            currentColumn++;
+            currentRow = 0;
+          }
+        }
+
+        grid.push({
+          ...result,
+          column: currentColumn,
+          row: currentRow,
+          tieCount: 0,
+        });
+
+        lastNonTieResult = result;
+      }
+    });
+
+    return grid;
+  };
+
+  // Convert and analyze
+  const displayResults = convertGameResults(apiResponseData);
+  const roadtwoGrid = convertToroadtwo(displayResults);
+
+  // Count consecutive wins by column
+  const columnCounts = { 莊: {}, 閑: {} };
+  const columns = {};
+
+  roadtwoGrid.forEach((item) => {
+    if (!columns[item.column]) {
+      columns[item.column] = [];
+    }
+    columns[item.column].push(item);
+  });
+
+  Object.values(columns).forEach((column) => {
+    if (column.length > 0) {
+      const columnType = column[0].outcome;
+      const columnLength = column.length;
+
+      if (!columnCounts[columnType][columnLength]) {
+        columnCounts[columnType][columnLength] = 0;
+      }
+      columnCounts[columnType][columnLength]++;
+    }
+  });
+
+  // Convert to chart data format
+  const chartData = [];
+  const maxStreak = Math.max(
+    Math.max(...Object.keys(columnCounts["莊"]).map(Number), 0),
+    Math.max(...Object.keys(columnCounts["閑"]).map(Number), 0)
+  );
+
+  for (let i = 1; i <= Math.max(maxStreak, 5); i++) {
+    chartData.push({
+      x: i,
+      y: columnCounts["莊"][i] || 0,
+      type: "莊",
+    });
+    chartData.push({
+      x: i,
+      y: columnCounts["閑"][i] || 0,
+      type: "閑",
+    });
+  }
+
+  return chartData;
+};
+
+// Lazy loading MatchingData component
+const MatchingDataLazy = ({ 
+  simulationId, 
+  playNumber, 
+  gameResults, 
+  consecutiveWinsCache, 
+  setConsecutiveWinsCache, 
+  addLog 
+}) => {
+  const [loading, setLoading] = useState(false);
+  const [matchingData, setMatchingData] = useState([]);
+
+  useEffect(() => {
+    const loadConsecutiveWinsData = async () => {
+      // Check cache first
+      const cacheKey = `${simulationId}_${playNumber}`;
+      if (consecutiveWinsCache[cacheKey]) {
+        setMatchingData(consecutiveWinsCache[cacheKey]);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        addLog(`📊 Loading consecutive wins analysis for play ${playNumber}...`);
+        
+        // Load consecutive analysis data from API
+        const analysisData = await BaccaratAPI.getPlayConsecutiveAnalysis(simulationId, playNumber, addLog);
+        
+        // Analyze the data
+        const consecutiveWinsData = analyzeConsecutiveWinsFromAPI(analysisData);
+        
+        // Cache the result
+        setConsecutiveWinsCache(prev => ({
+          ...prev,
+          [cacheKey]: consecutiveWinsData
+        }));
+        
+        setMatchingData(consecutiveWinsData);
+        addLog(`✅ Consecutive wins analysis loaded for play ${playNumber}`);
+        
+      } catch (error) {
+        console.error('Error loading consecutive wins data:', error);
+        addLog(`❌ Error loading consecutive wins data: ${error.message}`);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (simulationId && playNumber) {
+      loadConsecutiveWinsData();
+    }
+  }, [simulationId, playNumber, consecutiveWinsCache, setConsecutiveWinsCache, addLog]);
+
+  return (
+    <MatchingData 
+      matchingData={matchingData} 
+      loading={loading} 
+      gameResults={gameResults} 
+    />
+  );
+};
+
 export default MatchingData;
+export { MatchingDataLazy };

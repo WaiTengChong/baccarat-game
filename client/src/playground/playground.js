@@ -1,4 +1,4 @@
-import { Card, Flex, Space, Splitter, Table } from "antd";
+import { Button, Card, Flex, Space, Splitter, Table } from "antd";
 import React, { useContext, useState } from "react";
 import { cardImages } from "../components/CardImages";
 import BaccaratAPI from "../services/api";
@@ -6,7 +6,7 @@ import { LogContext } from "../Terminal/LongContext";
 import BetArea from "./betArea/betArea";
 import RoadOne from "./gameboard/roadone/roadone";
 import RoadTwo from "./gameboard/roadtwo/roadtwo";
-import MatchingData from "./matchingData/matchingData";
+import MatchingData, { MatchingDataLazy } from "./matchingData/matchingData";
 import PlayCard from "./playCard/playCard";
 import "./playground.css";
 
@@ -205,64 +205,15 @@ const View = ({
   onBackToPlays,
   onBackToTable,
   onViewGameDetail,
+  simulationId,
+  consecutiveWinsCache,
+  setConsecutiveWinsCache,
+  addLog,
+  setTableViewData,
 }) => {
-  // Generate table data based on the selected play
-  const generateTableData = (playData) => {
-    if (!playData || !playData.games) return [];
-
-    return playData.games.map((game, index) => {
-      // Use the hands data to calculate statistics
-      const totalHands = game.hands ? game.hands.length : game.totalHands || 0;
-      
-      let bankerWins = 0;
-      let playerWins = 0;
-      let tieWins = 0;
-      let bankerPairs = 0;
-      let playerPairs = 0;
-      
-      if (game.hands && game.hands.length > 0) {
-        // Calculate from actual hands data
-        game.hands.forEach(hand => {
-          if (hand.result === "Banker") bankerWins++;
-          else if (hand.result === "Player") playerWins++;
-          else if (hand.result === "Tie") tieWins++;
-          
-          // Check for pairs
-          if (hand.bankerPair) bankerPairs++;
-          if (hand.playerPair) playerPairs++;
-        });
-      } else {
-        // Fallback to aggregated data if hands not available
-        bankerWins = game.bankerWins || 0;
-        playerWins = game.playerWins || 0;
-        tieWins = game.tieWins || 0;
-        bankerPairs = game.bankerPairs || 0;
-        playerPairs = game.playerPairs || 0;
-      }
-
-      return {
-        key: index + 1,
-        gameNumber: game.gameNumber,
-        totalHands: totalHands,
-        bankerWins: `${bankerWins} (${
-          totalHands > 0 ? ((bankerWins / totalHands) * 100).toFixed(1) : 0
-        }%)`,
-        playerWins: `${playerWins} (${
-          totalHands > 0 ? ((playerWins / totalHands) * 100).toFixed(1) : 0
-        }%)`,
-        tieWins: `${tieWins} (${
-          totalHands > 0 ? ((tieWins / totalHands) * 100).toFixed(1) : 0
-        }%)`,
-        bankerPair: `${bankerPairs} (${
-          totalHands > 0 ? ((bankerPairs / totalHands) * 100).toFixed(1) : 0
-        }%)`,
-        playerPair: `${playerPairs} (${
-          totalHands > 0 ? ((playerPairs / totalHands) * 100).toFixed(1) : 0
-        }%)`,
-        gameData: game,
-      };
-    });
-  };
+  // No longer needed! Backend now returns pre-computed table data
+  // This eliminates the frontend performance bottleneck for large datasets
+  const [showLargeTable, setShowLargeTable] = useState(false);
 
   const columns = [
     {
@@ -305,18 +256,33 @@ const View = ({
       key: "action",
       render: (_, record) => (
         <Space size="middle">
-          <a onClick={() => onViewGameDetail(record.gameData)}>查看</a>
+          <a
+            onClick={() =>
+              onViewGameDetail({
+                gameNumber: record.gameNumber,
+                gameId: record.gameId,
+                totalHands: record.rawData?.totalHands || record.totalHands,
+                bankerWins: record.rawData?.bankerWins || 0,
+                playerWins: record.rawData?.playerWins || 0,
+                tieWins: record.rawData?.tieWins || 0,
+                bankerPairs: record.rawData?.bankerPairs || 0,
+                playerPairs: record.rawData?.playerPairs || 0,
+              })
+            }
+          >
+            查看
+          </a>
         </Space>
       ),
     },
   ];
-
-  // Table View
+  // Table View with optimized pre-computed data (no frontend processing!)
   if (showTableView && tableViewData) {
-    const tableData = generateTableData(tableViewData);
-    // Calculate consecutive wins data from ONLY the current play, not all games
-    // Wrap tableViewData in array so analyzeConsecutiveWins can process it correctly
-    const currentPlayConsecutiveWinsData = analyzeConsecutiveWins([tableViewData]);
+    // Use pre-computed table data from backend (instant display)
+    const tableData = tableViewData.tableData || [];
+    const pagination = tableViewData.pagination || {};
+    const totalRows = pagination.total || tableViewData.games?.length || 0;
+    const isLargeTable = totalRows > 100;
 
     return (
       <div className="table-view-container">
@@ -326,22 +292,113 @@ const View = ({
               ← 返回
             </button>
             <h3>
-              第{tableViewData.playNumber}局 - 遊戲統計 一共{" "}
-              {tableViewData.games ? tableViewData.games.length : 0}局
+              第{tableViewData.playNumber}局 - 遊戲統計 一共 {totalRows}局
+              {pagination.totalPages > 1 &&
+                ` (第${pagination.page}/${pagination.totalPages}頁)`}
             </h3>
           </div>
         </Card>
-        <MatchingData matchingData={currentPlayConsecutiveWinsData} gameResults={tableViewData} />
-        <div className="table-view-content">
-          <Card className="table-view-card">
-            <Table
-              className="table-view-table"
-              columns={columns}
-              dataSource={tableData}
-              pagination={false}
-            />
-          </Card>
-        </div>
+
+        {/* Check if consecutive wins data is pre-computed (mega mode) or needs lazy loading */}
+        {tableViewData.consecutiveWinsData ? (
+          // MEGA-optimized: use pre-computed data
+          <MatchingData
+            matchingData={tableViewData.consecutiveWinsData}
+            loading={false}
+            gameResults={tableViewData}
+          />
+        ) : (
+          // Standard optimization: lazy load data
+          <MatchingDataLazy
+            simulationId={simulationId}
+            playNumber={tableViewData.playNumber}
+            gameResults={tableViewData}
+            consecutiveWinsCache={consecutiveWinsCache}
+            setConsecutiveWinsCache={setConsecutiveWinsCache}
+            addLog={addLog}
+          />
+        )}
+
+        {/* Large Table Show/Hide Logic */}
+        {isLargeTable && !showLargeTable ? (
+          <div className="table-view-content">
+            <Card
+              className="table-view-card"
+              style={{ textAlign: "center", padding: "40px" }}
+            >
+              <div style={{ marginBottom: "16px" }}>
+                <h4>此表格包含 {totalRows} 局數據</h4>
+                <p style={{ color: "#666", marginBottom: "20px" }}>
+                  由於數據量較大，表格已隱藏以提升頁面效能
+                </p>
+              </div>
+              <Button
+                type="primary"
+                size="large"
+                onClick={() => {
+                  setShowLargeTable(true);
+                  addLog(`📊 顯示大型表格 (${totalRows} 局)`);
+                }}
+              >
+                📊 顯示完整表格 ({totalRows} 局)
+              </Button>
+            </Card>
+          </div>
+        ) : (
+          <div className="table-view-content">
+            <Card className="table-view-card">
+              {isLargeTable && showLargeTable && (
+                <div style={{ marginBottom: "16px", textAlign: "center" }}>
+                  <Button
+                    onClick={() => {
+                      setShowLargeTable(false);
+                      addLog(`📊 隱藏大型表格 (${totalRows} 局)`);
+                    }}
+                    style={{ marginBottom: "16px" }}
+                  >
+                    📈 隱藏表格
+                  </Button>
+                </div>
+              )}
+              <Table
+                className="table-view-table"
+                columns={columns}
+                dataSource={tableData}
+                pagination={
+                  pagination.totalPages > 1
+                    ? {
+                        current: pagination.page,
+                        pageSize: pagination.pageSize,
+                        total: pagination.total,
+                        showSizeChanger: false,
+                        showQuickJumper: true,
+                        showTotal: (total, range) =>
+                          `${range[0]}-${range[1]} of ${total} games`,
+                        onChange: async (page) => {
+                          try {
+                            addLog(
+                              `📋 Loading page ${page} for play ${tableViewData.playNumber}...`
+                            );
+                            const newData = await BaccaratAPI.getPlayGames(
+                              simulationId,
+                              tableViewData.playNumber,
+                              page,
+                              pagination.pageSize,
+                              addLog
+                            );
+                            setTableViewData(newData);
+                          } catch (error) {
+                            console.error("Error loading page:", error);
+                            addLog(`❌ Error loading page: ${error.message}`);
+                          }
+                        },
+                      }
+                    : false
+                }
+              />
+            </Card>
+          </div>
+        )}
       </div>
     );
   }
@@ -352,9 +409,11 @@ const View = ({
     let currentPlayData = tableViewData; // Use the current play data from table view
     if (!currentPlayData && detailedViewData.playNumber) {
       // Fallback: find the play data from gameResults if not available
-      currentPlayData = gameResults.find(play => play.playNumber === detailedViewData.playNumber);
+      currentPlayData = gameResults.find(
+        (play) => play.playNumber === detailedViewData.playNumber
+      );
     }
-    
+
     // Ensure data is in correct format for analyzeConsecutiveWins function
     let dataForAnalysis;
     if (currentPlayData) {
@@ -367,8 +426,9 @@ const View = ({
       // Fallback: create a minimal structure
       dataForAnalysis = [];
     }
-    
-    const currentPlayConsecutiveWinsData = analyzeConsecutiveWins(dataForAnalysis);
+
+    const currentPlayConsecutiveWinsData =
+      analyzeConsecutiveWins(dataForAnalysis);
 
     return (
       <div className="detailed-view-container">
@@ -454,7 +514,10 @@ const View = ({
               );
             })}
           </div>
-          <MatchingData matchingData={currentPlayConsecutiveWinsData} gameResults={currentPlayData || detailedViewData} />
+          <MatchingData
+            matchingData={currentPlayConsecutiveWinsData}
+            gameResults={currentPlayData || detailedViewData}
+          />
         </div>
       </div>
     );
@@ -486,31 +549,52 @@ const Playground = () => {
   const [showDetailedView, setShowDetailedView] = useState(false);
   const [tableViewData, setTableViewData] = useState(null);
   const [detailedViewData, setDetailedViewData] = useState(null);
+  const [simulationId, setSimulationId] = useState(null);
+  const [consecutiveWinsCache, setConsecutiveWinsCache] = useState({});
 
-  const handleGameStart = (plays, gameResultsData, playCardsData) => {
+  const handleGameStart = (plays, gameResultsData, playCardsData, simId, optimizationLevel, totalGames) => {
     console.log('Received game results:', gameResultsData);
+    console.log('Optimization level:', optimizationLevel);
     
     // Reset views
     setShowTableView(false);
     setShowDetailedView(false);
     setTableViewData(null);
     setDetailedViewData(null);
+    setConsecutiveWinsCache({}); // Clear cache
 
+    // Store simulation ID for lazy loading
+    setSimulationId(simId);
+    
     // Use the playCardsData passed from BetArea (already marked as 'finish')
     setPlayCardsData(playCardsData || []);
     setGameResults(gameResultsData);
     
-    addLog(`Simulation completed with ${gameResultsData.length} plays`);
+    if (optimizationLevel === 'mega') {
+      addLog(`🚀 MEGA-optimized simulation completed with ${gameResultsData.length} plays (${totalGames} games)`);
+      addLog(`⚡ Consecutive wins analysis pre-computed - no additional loading needed!`);
+    } else {
+      addLog(`✅ Optimized simulation completed with ${gameResultsData.length} plays (detailed data loads on-demand)`);
+    }
   };
 
-  const handleCardClick = (playData) => {
+  const handleCardClick = async (playData) => {
     if (playData.state === "finish") {
-      const selectedPlayData = gameResults.find(
-        (result) => result.playNumber === playData.playNumber
-      );
-      setTableViewData(selectedPlayData);
-      setShowTableView(true);
-      setShowDetailedView(false);
+      try {
+        addLog(`📋 Loading detailed data for play ${playData.playNumber}...`);
+        
+        // Load detailed games data for this play on-demand
+        const detailedPlayData = await BaccaratAPI.getPlayGames(simulationId, playData.playNumber, 1, 1000, addLog);
+        
+        setTableViewData(detailedPlayData);
+        setShowTableView(true);
+        setShowDetailedView(false);
+        
+        addLog(`✅ Loaded ${detailedPlayData.games.length} games for play ${playData.playNumber}`);
+      } catch (error) {
+        console.error('Error loading play data:', error);
+        addLog(`❌ Error loading play data: ${error.message}`);
+      }
     }
   };
 
@@ -578,6 +662,8 @@ const Playground = () => {
     setShowDetailedView(false);
     setTableViewData(null);
     setDetailedViewData(null);
+    setSimulationId(null);
+    setConsecutiveWinsCache({});
   };
 
   return (
@@ -594,6 +680,10 @@ const Playground = () => {
           onBackToPlays={handleBackToPlays}
           onBackToTable={handleBackToTable}
           onViewGameDetail={handleViewGameDetail}
+          simulationId={simulationId}
+          consecutiveWinsCache={consecutiveWinsCache}
+          setConsecutiveWinsCache={setConsecutiveWinsCache}
+          addLog={addLog}
         />
       </Splitter.Panel>
       <Splitter.Panel max="20%" min="10%" defaultSize="20%">
