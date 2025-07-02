@@ -551,10 +551,13 @@ const Playground = () => {
   const [detailedViewData, setDetailedViewData] = useState(null);
   const [simulationId, setSimulationId] = useState(null);
   const [consecutiveWinsCache, setConsecutiveWinsCache] = useState({});
+  const [optimizationLevel, setOptimizationLevel] = useState('standard');
+  const [simulationTiming, setSimulationTiming] = useState(null);
 
-  const handleGameStart = (plays, gameResultsData, playCardsData, simId, optimizationLevel, totalGames) => {
+  const handleGameStart = (plays, gameResultsData, playCardsData, simId, optLevel, totalGames, timing) => {
     console.log('Received game results:', gameResultsData);
-    console.log('Optimization level:', optimizationLevel);
+    console.log('Optimization level:', optLevel);
+    console.log('Timing info:', timing);
     
     // Reset views
     setShowTableView(false);
@@ -563,18 +566,43 @@ const Playground = () => {
     setDetailedViewData(null);
     setConsecutiveWinsCache({}); // Clear cache
 
-    // Store simulation ID for lazy loading
+    // Store simulation info
     setSimulationId(simId);
+    setOptimizationLevel(optLevel);
+    setSimulationTiming(timing);
     
-    // Use the playCardsData passed from BetArea (already marked as 'finish')
-    setPlayCardsData(playCardsData || []);
+    // Create enhanced play cards data with timing information
+    const enhancedPlayCardsData = playCardsData.map((playCard, index) => {
+      const playData = gameResultsData.find(result => result.playNumber === playCard.playNumber);
+      return {
+        ...playCard,
+        timing: timing,
+        optimizationLevel: optLevel,
+        totalGames: playData ? playData.games.length : 0,
+        totalPlays: plays
+      };
+    });
+    
+    setPlayCardsData(enhancedPlayCardsData);
     setGameResults(gameResultsData);
     
-    if (optimizationLevel === 'mega') {
+    if (optLevel === 'ultra-fast') {
+      addLog(`⚡ ULTRA-FAST in-memory simulation completed with ${gameResultsData.length} plays (${totalGames} games)`);
+      addLog(`🚀 All data computed in-memory - no database operations performed!`);
+      if (timing) {
+        addLog(`⏱️ Execution time: ${timing.duration}s (${timing.handsPerSecond} hands/second)`);
+      }
+    } else if (optLevel === 'mega') {
       addLog(`🚀 MEGA-optimized simulation completed with ${gameResultsData.length} plays (${totalGames} games)`);
       addLog(`⚡ Consecutive wins analysis pre-computed - no additional loading needed!`);
+      if (timing) {
+        addLog(`⏱️ Execution time: ${timing.duration}s (${timing.handsPerSecond} hands/second)`);
+      }
     } else {
       addLog(`✅ Optimized simulation completed with ${gameResultsData.length} plays (detailed data loads on-demand)`);
+      if (timing) {
+        addLog(`⏱️ Execution time: ${timing.duration}s (${timing.handsPerSecond} hands/second)`);
+      }
     }
   };
 
@@ -583,14 +611,83 @@ const Playground = () => {
       try {
         addLog(`📋 Loading detailed data for play ${playData.playNumber}...`);
         
-        // Load detailed games data for this play on-demand
-        const detailedPlayData = await BaccaratAPI.getPlayGames(simulationId, playData.playNumber, 1, 1000, addLog);
-        
-        setTableViewData(detailedPlayData);
-        setShowTableView(true);
-        setShowDetailedView(false);
-        
-        addLog(`✅ Loaded ${detailedPlayData.games.length} games for play ${playData.playNumber}`);
+        if (optimizationLevel === 'ultra-fast') {
+          // Ultra-fast mode: use in-memory data
+          const playResult = gameResults.find(result => result.playNumber === playData.playNumber);
+          
+          if (playResult) {
+            // Convert in-memory data to table format
+            const tableData = playResult.games.map((game, index) => {
+              const totalHands = game.totalHands;
+              const bankerWins = game.bankerWins;
+              const playerWins = game.playerWins;
+              const tieWins = game.tieWins;
+              const bankerPairs = game.bankerPairs;
+              const playerPairs = game.playerPairs;
+              
+              return {
+                key: index + 1,
+                gameNumber: game.gameNumber,
+                gameId: `memory_${playData.playNumber}_${game.gameNumber}`, // Fake ID for ultra-fast mode
+                totalHands: totalHands,
+                bankerWins: `${bankerWins} (${
+                  totalHands > 0 ? ((bankerWins / totalHands) * 100).toFixed(1) : 0
+                }%)`,
+                playerWins: `${playerWins} (${
+                  totalHands > 0 ? ((playerWins / totalHands) * 100).toFixed(1) : 0
+                }%)`,
+                tieWins: `${tieWins} (${
+                  totalHands > 0 ? ((tieWins / totalHands) * 100).toFixed(1) : 0
+                }%)`,
+                bankerPair: `${bankerPairs} (${
+                  totalHands > 0 ? ((bankerPairs / totalHands) * 100).toFixed(1) : 0
+                }%)`,
+                playerPair: `${playerPairs} (${
+                  totalHands > 0 ? ((playerPairs / totalHands) * 100).toFixed(1) : 0
+                }%)`,
+                rawData: {
+                  totalHands,
+                  bankerWins,
+                  playerWins,
+                  tieWins,
+                  bankerPairs,
+                  playerPairs
+                }
+              };
+            });
+            
+            const ultraFastTableData = {
+              playNumber: playData.playNumber,
+              tableData: tableData,
+              consecutiveWinsData: playResult.consecutiveWinsData, // Pre-computed in ultra-fast mode!
+              games: playResult.games,
+              pagination: {
+                page: 1,
+                pageSize: playResult.games.length,
+                total: playResult.games.length,
+                totalPages: 1,
+                hasMore: false
+              }
+            };
+            
+            setTableViewData(ultraFastTableData);
+            setShowTableView(true);
+            setShowDetailedView(false);
+            
+            addLog(`⚡ Ultra-fast: Loaded ${playResult.games.length} games for play ${playData.playNumber} (from memory)`);
+          } else {
+            addLog(`❌ No data found for play ${playData.playNumber} in ultra-fast mode`);
+          }
+        } else {
+          // Standard/mega mode: load from database
+          const detailedPlayData = await BaccaratAPI.getPlayGames(simulationId, playData.playNumber, 1, 1000, addLog);
+          
+          setTableViewData(detailedPlayData);
+          setShowTableView(true);
+          setShowDetailedView(false);
+          
+          addLog(`✅ Loaded ${detailedPlayData.games.length} games for play ${playData.playNumber}`);
+        }
       } catch (error) {
         console.error('Error loading play data:', error);
         addLog(`❌ Error loading play data: ${error.message}`);

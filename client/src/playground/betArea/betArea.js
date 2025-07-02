@@ -1,4 +1,4 @@
-import { Button, InputNumber, message, Progress, Select, Space, Typography } from 'antd';
+import { Button, InputNumber, message, Progress, Select, Space, Switch, Typography } from 'antd';
 import React, { useContext, useState } from 'react';
 import { LogContext } from "../../Terminal/LongContext";
 import BaccaratAPI from "../../services/api";
@@ -43,6 +43,7 @@ const BetArea = ({ onGameStart, onResetGame }) => {
   const [simulationStatus, setSimulationStatus] = useState('');
   const { addLog, clearLogs } = useContext(LogContext);
   const [skipCard, setSkipCard] = useState(10);
+  const [useInMemory, setUseInMemory] = useState(true); // Default to ultra-fast mode
 
   const handlePlay = async () => {
     console.log('Starting game with:', {
@@ -50,11 +51,12 @@ const BetArea = ({ onGameStart, onResetGame }) => {
       gamesPerPlay,
       handsPerGame,
       deckCount,
-      skipCard
+      skipCard,
+      useInMemory
     });
 
     clearLogs();
-    addLog(`運行 ${plays}, 局數 ${gamesPerPlay}, 手 ${handsPerGame}, 飛牌數 ${skipCard}`);
+    addLog(`運行 ${plays}, 局數 ${gamesPerPlay}, 手 ${handsPerGame}, 飛牌數 ${skipCard}, ${useInMemory ? '超快記憶體模式' : '資料庫模式'}`);
     
     setIsPlaying(true);
     setProgress(0);
@@ -62,7 +64,8 @@ const BetArea = ({ onGameStart, onResetGame }) => {
     
     try {
       // Start simulation on backend with logging - now returns complete data
-      addLog(`🚀 Starting simulation: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks, skip ${skipCard} cards`);
+      const modeText = useInMemory ? 'ultra-fast in-memory mode' : 'database mode';
+      addLog(`🚀 Starting simulation in ${modeText}: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks, skip ${skipCard} cards`);
       setSimulationStatus('Running simulation...');
       setProgress(50); // Show some progress
       
@@ -72,6 +75,7 @@ const BetArea = ({ onGameStart, onResetGame }) => {
         handsPerGame, 
         deckCount,
         skipCard,
+        useInMemory, // Pass the in-memory flag
         addLog  // Pass the logger
       );
       
@@ -107,10 +111,17 @@ const BetArea = ({ onGameStart, onResetGame }) => {
         total + play.games.reduce((gameTotal, game) => 
           gameTotal + (game.totalHands || 0), 0), 0);
       
-      addLog(`✅ Simulation completed with ${frontendResults.length} plays and ${totalHands} total hands`);
+      const optimizationText = response.optimizationLevel === 'ultra-fast' ? 'ULTRA-FAST (no database)' : response.optimizationLevel;
+      addLog(`✅ Simulation completed with ${frontendResults.length} plays and ${totalHands} total hands using ${optimizationText} mode`);
       
-      // Pass results to parent component including simulation ID and optimization info
-      onGameStart(plays, frontendResults, newPlayCardsData, response.simulationId, response.optimizationLevel, response.totalGames);
+      // Extract timing information from API response
+      const timingInfo = response.timing || null;
+      if (timingInfo) {
+        addLog(`⏱️ Performance: ${timingInfo.duration}s execution time (${timingInfo.handsPerSecond} hands/second)`);
+      }
+      
+      // Pass results to parent component including simulation ID, optimization info, and timing
+      onGameStart(plays, frontendResults, newPlayCardsData, response.simulationId, response.optimizationLevel, response.totalGames, timingInfo);
       
     } catch (error) {
       console.error('Simulation error:', error);
@@ -192,6 +203,22 @@ const BetArea = ({ onGameStart, onResetGame }) => {
             className="control-input"
             disabled={isPlaying}
           />
+        </div>
+        
+        <div className="control-group">
+          <Text className="control-label">模式:</Text>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <Switch
+              checked={useInMemory}
+              onChange={(checked) => setUseInMemory(checked)}
+              disabled={isPlaying}
+              checkedChildren="⚡"
+              unCheckedChildren="💾"
+            />
+            <Text style={{ fontSize: '10px', marginTop: '4px', textAlign: 'center' }}>
+              {useInMemory ? '超快記憶體' : '資料庫儲存'}
+            </Text>
+          </div>
         </div>
         
         <Button

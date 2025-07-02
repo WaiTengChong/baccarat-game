@@ -2,10 +2,11 @@ const API_BASE_URL = 'http://localhost:3001/api';
 
 class BaccaratAPI {
   // Start a new simulation (now returns summary data only)
-  static async startSimulation(plays, gamesPerPlay, handsPerGame, deckCount = 8, skipCard = 0, logger = null) {
+  static async startSimulation(plays, gamesPerPlay, handsPerGame, deckCount = 8, skipCard = 0, useInMemory = true, logger = null) {
     try {
+      const modeText = useInMemory ? 'ultra-fast in-memory' : 'database-backed';
       if (logger) {
-        logger(`🚀 Starting optimized simulation: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks, skip ${skipCard} cards`);
+        logger(`🚀 Starting ${modeText} simulation: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks, skip ${skipCard} cards`);
         logger(`📡 Sending request to ${API_BASE_URL}/simulations`);
       }
 
@@ -14,7 +15,8 @@ class BaccaratAPI {
         gamesPerPlay,
         handsPerGame,
         deckCount,
-        skipCard
+        skipCard,
+        useInMemory
       };
       
       const response = await fetch(`${API_BASE_URL}/simulations`, {
@@ -34,9 +36,15 @@ class BaccaratAPI {
       }
 
       const result = await response.json();
+      const optimizationText = result.optimizationLevel === 'ultra-fast' ? 'ULTRA-FAST (no database)' : result.optimizationLevel;
       if (logger) {
-        logger(`✅ Optimized simulation completed with ID: ${result.simulationId}`);
-        logger(`📊 Summary data loaded (detailed hands available on-demand)`);
+        logger(`✅ ${optimizationText} simulation completed with ID: ${result.simulationId}`);
+        if (result.optimizationLevel === 'ultra-fast') {
+          logger(`⚡ Pure in-memory processing - no database operations performed`);
+          logger(`🚀 Maximum speed achieved with zero I/O overhead`);
+        } else {
+          logger(`📊 Summary data loaded (detailed hands available on-demand)`);
+        }
         logger(`🔥 Response size significantly reduced for performance`);
       }
 

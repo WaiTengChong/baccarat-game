@@ -366,13 +366,14 @@ function simulateGameBatchMegaOptimized(workload, handsPerGame, deckCount, skipC
 
 // Main worker execution
 try {
-  const { workload, playNumber, gameNumbers, handsPerGame, deckCount, skipCard, optimizedMode, megaOptimizedMode } = workerData;
+  const { workload, playNumber, gameNumbers, handsPerGame, deckCount, skipCard, optimizedMode, megaOptimizedMode, inMemoryMode } = workerData;
   
   let results;
   
-  if (megaOptimizedMode && workload) {
-    // MEGA optimization: pre-compute everything locally, return only final stats
-    console.log(`Worker running in MEGA-optimized mode for ${workload.length} games`);
+  if ((megaOptimizedMode || inMemoryMode) && workload) {
+    // MEGA/Ultra-fast optimization: pre-compute everything locally, return only final stats
+    const modeText = inMemoryMode ? 'ULTRA-FAST in-memory' : 'MEGA-optimized';
+    console.log(`Worker running in ${modeText} mode for ${workload.length} games`);
     results = simulateGameBatchMegaOptimized(workload, handsPerGame, deckCount, skipCard);
     parentPort.postMessage({ success: true, megaData: results });
   } else if (optimizedMode && workload) {
