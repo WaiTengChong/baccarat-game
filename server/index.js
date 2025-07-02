@@ -244,16 +244,17 @@ function needsBankerThirdCard(bankerTotal, playerThirdCard) {
   }
 }
 
+// Deal a hand directly from the shoe to avoid extra copying
 function playBaccaratHand(deck) {
-  let deckCopy = [...deck];
+  // Deck is mutated in place
   let playerCards = [];
   let bankerCards = [];
-  
+
   // Initial deal
-  playerCards.push(deckCopy.pop());
-  bankerCards.push(deckCopy.pop());
-  playerCards.push(deckCopy.pop());
-  bankerCards.push(deckCopy.pop());
+  playerCards.push(deck.pop());
+  bankerCards.push(deck.pop());
+  playerCards.push(deck.pop());
+  bankerCards.push(deck.pop());
   
   let playerTotal = getHandTotal(playerCards);
   let bankerTotal = getHandTotal(bankerCards);
@@ -265,22 +266,21 @@ function playBaccaratHand(deck) {
       bankerCards,
       playerTotal,
       bankerTotal,
-      result: playerTotal > bankerTotal ? 'Player' : bankerTotal > playerTotal ? 'Banker' : 'Tie',
-      remainingDeck: deckCopy
+      result: playerTotal > bankerTotal ? 'Player' : bankerTotal > playerTotal ? 'Banker' : 'Tie'
     };
   }
   
   // Player third card rule
   let playerThirdCard = null;
   if (playerTotal <= 5) {
-    playerThirdCard = deckCopy.pop();
+    playerThirdCard = deck.pop();
     playerCards.push(playerThirdCard);
     playerTotal = getHandTotal(playerCards);
   }
   
   // Banker third card rule
   if (needsBankerThirdCard(bankerTotal, playerThirdCard)) {
-    bankerCards.push(deckCopy.pop());
+    bankerCards.push(deck.pop());
     bankerTotal = getHandTotal(bankerCards);
   }
   
@@ -299,8 +299,7 @@ function playBaccaratHand(deck) {
     bankerCards,
     playerTotal,
     bankerTotal,
-    result,
-    remainingDeck: deckCopy
+    result
   };
 }
 

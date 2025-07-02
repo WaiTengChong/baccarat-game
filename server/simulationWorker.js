@@ -49,16 +49,17 @@ function needsBankerThirdCard(bankerTotal, playerThirdCard) {
   }
 }
 
+// Deal a single hand directly from the shoe
 function playBaccaratHand(deck) {
-  let deckCopy = [...deck];
+  // Mutate the deck in place for performance
   let playerCards = [];
   let bankerCards = [];
-  
+
   // Initial deal
-  playerCards.push(deckCopy.pop());
-  bankerCards.push(deckCopy.pop());
-  playerCards.push(deckCopy.pop());
-  bankerCards.push(deckCopy.pop());
+  playerCards.push(deck.pop());
+  bankerCards.push(deck.pop());
+  playerCards.push(deck.pop());
+  bankerCards.push(deck.pop());
   
   let playerTotal = getHandTotal(playerCards);
   let bankerTotal = getHandTotal(bankerCards);
@@ -70,22 +71,21 @@ function playBaccaratHand(deck) {
       bankerCards,
       playerTotal,
       bankerTotal,
-      result: playerTotal > bankerTotal ? 'Player' : bankerTotal > playerTotal ? 'Banker' : 'Tie',
-      remainingDeck: deckCopy
+      result: playerTotal > bankerTotal ? 'Player' : bankerTotal > playerTotal ? 'Banker' : 'Tie'
     };
   }
   
   // Player third card rule
   let playerThirdCard = null;
   if (playerTotal <= 5) {
-    playerThirdCard = deckCopy.pop();
+    playerThirdCard = deck.pop();
     playerCards.push(playerThirdCard);
     playerTotal = getHandTotal(playerCards);
   }
   
   // Banker third card rule
   if (needsBankerThirdCard(bankerTotal, playerThirdCard)) {
-    bankerCards.push(deckCopy.pop());
+    bankerCards.push(deck.pop());
     bankerTotal = getHandTotal(bankerCards);
   }
   
@@ -104,8 +104,7 @@ function playBaccaratHand(deck) {
     bankerCards,
     playerTotal,
     bankerTotal,
-    result,
-    remainingDeck: deckCopy
+    result
   };
 }
 
@@ -119,31 +118,39 @@ function formatCard(card) {
   return `${card.value}${card.suit}`;
 }
 
+// Determine burn count based on the first card value
+function getBurnCount(card) {
+  const val = getCardValue(card);
+  return val === 0 ? 10 : val;
+}
+
+// Initialize a fresh shoe with burn card and random cut card position
+function initShoe(deckTemplate, skipCard = 0) {
+  let deck = shuffleDeck([...deckTemplate]);
+
+  // Burn first card and additional cards equal to its value
+  const burnCard = deck.pop();
+  let burnCount = getBurnCount(burnCard);
+  while (burnCount-- > 0 && deck.length) deck.pop();
+
+  // Optional extra cards to skip
+  for (let i = 0; i < skipCard && deck.length; i++) {
+    deck.pop();
+  }
+
+  // Position of the cut card from bottom (approx 14-29 cards)
+  const cutIndex = Math.floor(Math.random() * 16) + 14;
+
+  return { deck, cutIndex };
+}
+
 // Memory-optimized worker function that only returns summary statistics
 function simulateGameBatchOptimized(workload, handsPerGame, deckCount, skipCard = 0, optimizedMode = false) {
   const results = [];
-  
+  const baseDeck = createDeck(deckCount);
+
   for (const { playNumber, gameNumber } of workload) {
-    let deck = shuffleDeck(createDeck(deckCount));
-    
-    // Skip cards if specified and log them
-    const skippedCards = [];
-    for (let i = 0; i < skipCard; i++) {
-      if (deck.length > 0) {
-        const skippedCard = deck.pop();
-        skippedCards.push(skippedCard);
-      }
-    }
-    
-    // Send skipped cards info back to main thread for logging
-    if (skippedCards.length > 0) {
-      parentPort.postMessage({
-        type: 'skippedCards',
-        playNumber,
-        gameNumber,
-        skippedCards: skippedCards.map(formatCard)
-      });
-    }
+    let { deck, cutIndex } = initShoe(baseDeck, skipCard);
     
     // Only store summary statistics to minimize memory usage
     let bankerWins = 0, playerWins = 0, tieWins = 0;
@@ -153,12 +160,11 @@ function simulateGameBatchOptimized(workload, handsPerGame, deckCount, skipCard 
     const handsForAnalysis = optimizedMode ? [] : null;
     
     for (let hand = 1; hand <= handsPerGame; hand++) {
-      if (deck.length < 20) {
-        deck = shuffleDeck(createDeck(deckCount));
+      if (deck.length <= cutIndex) {
+        ({ deck, cutIndex } = initShoe(baseDeck, skipCard));
       }
       
       const handResult = playBaccaratHand(deck);
-      deck = handResult.remainingDeck;
       
       // Count results
       if (handResult.result === 'Banker') bankerWins++;
@@ -292,28 +298,10 @@ function computeConsecutiveWinsAnalysis(allHandResults) {
 // MEGA-optimized worker function for very large simulations
 function simulateGameBatchMegaOptimized(workload, handsPerGame, deckCount, skipCard = 0) {
   const results = [];
-  
+  const baseDeck = createDeck(deckCount);
+
   for (const { playNumber, gameNumber } of workload) {
-    let deck = shuffleDeck(createDeck(deckCount));
-    
-    // Skip cards if specified
-    const skippedCards = [];
-    for (let i = 0; i < skipCard; i++) {
-      if (deck.length > 0) {
-        const skippedCard = deck.pop();
-        skippedCards.push(skippedCard);
-      }
-    }
-    
-    // Send skipped cards info
-    if (skippedCards.length > 0) {
-      parentPort.postMessage({
-        type: 'skippedCards',
-        playNumber,
-        gameNumber,
-        skippedCards: skippedCards.map(formatCard)
-      });
-    }
+    let { deck, cutIndex } = initShoe(baseDeck, skipCard);
     
     // Run all hands and store only results (not full hand data)
     const handResults = [];
@@ -321,12 +309,11 @@ function simulateGameBatchMegaOptimized(workload, handsPerGame, deckCount, skipC
     let bankerPairs = 0, playerPairs = 0;
     
     for (let hand = 1; hand <= handsPerGame; hand++) {
-      if (deck.length < 20) {
-        deck = shuffleDeck(createDeck(deckCount));
+      if (deck.length <= cutIndex) {
+        ({ deck, cutIndex } = initShoe(baseDeck, skipCard));
       }
       
       const handResult = playBaccaratHand(deck);
-      deck = handResult.remainingDeck;
       
       // Count results
       if (handResult.result === 'Banker') bankerWins++;
