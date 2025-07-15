@@ -265,7 +265,58 @@ const MatchingData = ({
 
 // Function to analyze consecutive wins from API data (optimized for API response)
 const analyzeConsecutiveWinsFromAPI = (apiResponseData) => {
-  if (!apiResponseData || !apiResponseData.games) return [];
+  // Check if we have pre-calculated consecutive analysis (from embedded server)
+  if (apiResponseData && 
+      apiResponseData.consecutiveBanker && 
+      apiResponseData.consecutivePlayer && 
+      apiResponseData.consecutiveTie) {
+    
+    console.log('🎯 Using pre-calculated consecutive analysis from server');
+    
+    // Convert server data to chart format
+    const chartData = [];
+    
+    // Get max streak length
+    const bankerLengths = apiResponseData.consecutiveBanker.map(item => item.length);
+    const playerLengths = apiResponseData.consecutivePlayer.map(item => item.length);
+    const maxStreak = Math.max(
+      Math.max(...bankerLengths, 0),
+      Math.max(...playerLengths, 0),
+      5 // Minimum 5 for display
+    );
+    
+    // Convert to chart format
+    for (let i = 1; i <= maxStreak; i++) {
+      // Find banker count for this length
+      const bankerEntry = apiResponseData.consecutiveBanker.find(entry => entry.length === i);
+      const bankerCount = bankerEntry ? bankerEntry.count : 0;
+      
+      // Find player count for this length
+      const playerEntry = apiResponseData.consecutivePlayer.find(entry => entry.length === i);
+      const playerCount = playerEntry ? playerEntry.count : 0;
+      
+      chartData.push({
+        x: i,
+        y: bankerCount,
+        type: "莊",
+      });
+      chartData.push({
+        x: i,
+        y: playerCount,
+        type: "閑",
+      });
+    }
+    
+    return chartData;
+  }
+  
+  // Fallback: Check if we have raw games data (from original server)
+  if (!apiResponseData || !apiResponseData.games) {
+    console.warn('⚠️ No consecutive analysis or games data found');
+    return [];
+  }
+
+  console.log('🔄 Processing raw games data for consecutive analysis');
 
   // Convert API response to display format
   const convertGameResults = (apiData) => {

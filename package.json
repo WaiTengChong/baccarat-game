@@ -12,7 +12,18 @@
     "start-server": "cd server && yarn start",
     "start-server-large": "cd server && yarn start:large",
     "build-react": "cd client && yarn build",
-    "pack": "yarn build-react && electron-builder"
+    "install-server-deps": "cd server && yarn install --production",
+    "prebuild": "yarn build-react && yarn install-server-deps",
+    "build": "electron-builder",
+    "build-mac": "electron-builder --mac",
+    "build-win": "electron-builder --win", 
+    "build-linux": "electron-builder --linux",
+    "pack": "yarn prebuild && yarn build-mac",
+    "pack-large": "yarn prebuild && yarn build-mac"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
@@ -20,5 +31,79 @@
     "electron": "^36.4.0",
     "electron-builder": "^26.0.12",
     "nodemon": "^3.1.10"
+  },
+  "build": {
+    "appId": "com.baccarat.game",
+    "productName": "Baccarat Game",
+    "directories": {
+      "output": "dist"
+    },
+    "asar": false,
+    "asarUnpack": [
+      "server/**/*"
+    ],
+    "files": [
+      "electron/**/*",
+      "client/build/**/*",
+      "server/**/*",
+      "!server/yarn.lock",
+      "!server/package-lock.json",
+      "!server/README_PARALLEL.md",
+      "!server/performance-test.js",
+      "node_modules/**/*"
+    ],
+    "extraResources": [],
+    "mac": {
+      "category": "public.app-category.games",
+      "icon": "assets/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "Baccarat Game",
+      "window": {
+        "width": 600,
+        "height": 400
+      },
+      "contents": [
+        {
+          "x": 150,
+          "y": 200,
+          "type": "file"
+        },
+        {
+          "x": 450,
+          "y": 200,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "linux": {
+      "target": "AppImage"
+    }
   }
 }

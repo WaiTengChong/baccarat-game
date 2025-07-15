@@ -227,9 +227,22 @@ class BaccaratAPI {
 
       const result = await response.json();
       if (logger) {
-        const gameCount = result.games ? result.games.length : 0;
-        const totalHands = result.games ? result.games.reduce((sum, g) => sum + g.hands.length, 0) : 0;
-        logger(`✅ Loaded consecutive analysis for play ${playNumber}: ${gameCount} games, ${totalHands} hands`);
+        // Check if we have pre-calculated consecutive analysis (embedded server)
+        if (result.consecutiveBanker || result.consecutivePlayer || result.consecutiveTie) {
+          const bankerStreaks = result.consecutiveBanker ? result.consecutiveBanker.length : 0;
+          const playerStreaks = result.consecutivePlayer ? result.consecutivePlayer.length : 0;
+          const tieStreaks = result.consecutiveTie ? result.consecutiveTie.length : 0;
+          logger(`✅ Loaded pre-calculated consecutive analysis for play ${playNumber}: ${bankerStreaks + playerStreaks + tieStreaks} streak patterns`);
+        } 
+        // Fallback for raw games data (original server)
+        else if (result.games) {
+          const gameCount = result.games.length;
+          const totalHands = result.games.reduce((sum, g) => sum + g.hands.length, 0);
+          logger(`✅ Loaded consecutive analysis for play ${playNumber}: ${gameCount} games, ${totalHands} hands`);
+        }
+        else {
+          logger(`✅ Loaded consecutive analysis data for play ${playNumber}`);
+        }
       }
 
       return result;

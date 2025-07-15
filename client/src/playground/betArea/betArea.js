@@ -173,7 +173,7 @@ const BetArea = ({ onGameStart, onResetGame }) => {
           <Text className="control-label">局數:</Text>
           <InputNumber
             min={1}
-            max={100000}
+            max={10000000000000}
             value={gamesPerPlay}
             onChange={(value) => setGamesPerPlay(value || 1)}
             className="control-input"

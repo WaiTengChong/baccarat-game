@@ -169,14 +169,20 @@ function simulateGameBatchOptimized(workload, handsPerGame, deckCount, skipCard 
       if (hasPair(handResult.bankerCards)) bankerPairs++;
       if (hasPair(handResult.playerCards)) playerPairs++;
       
-      // In optimized mode, only store minimal data for consecutive analysis
+      // Always store hand data with card details for proper frontend display
       if (optimizedMode && handsForAnalysis) {
         handsForAnalysis.push({
           handNumber: hand,
-          result: handResult.result
+          result: handResult.result,
+          playerTotal: handResult.playerTotal,
+          bankerTotal: handResult.bankerTotal,
+          playerCards: handResult.playerCards,
+          bankerCards: handResult.bankerCards,
+          bankerPair: hasPair(handResult.bankerCards),
+          playerPair: hasPair(handResult.playerCards)
         });
       } else if (!optimizedMode) {
-        // Legacy mode: store full hand details (causes memory issues)
+        // Legacy mode: store full hand details
         if (!handsForAnalysis) handsForAnalysis = [];
         handsForAnalysis.push({
           handNumber: hand,

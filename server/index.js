@@ -1117,23 +1117,27 @@ async function runSimulationOptimized(simulationId, plays, gamesPerPlay, handsPe
         );
       });
       
-      // Insert minimal hands data for consecutive analysis if available
-      if (gameResult.handsForAnalysis && gameResult.handsForAnalysis.length > 0) {
+      // Insert hands data - check for full hand details or analysis data
+      const handsToInsert = gameResult.hands || gameResult.handsForAnalysis;
+      if (handsToInsert && handsToInsert.length > 0) {
         // Use a prepared statement for better performance with large datasets
         const stmt = db.prepare('INSERT INTO hands (game_id, hand_number, result, player_total, banker_total, player_cards, banker_cards, banker_pair, player_pair) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
         
         try {
-          for (const hand of gameResult.handsForAnalysis) {
+          for (const hand of handsToInsert) {
+            // Check if this hand has full card data or just analysis data
+            const hasFullData = hand.playerCards && hand.bankerCards;
+            
             stmt.run([
               gameId,
               hand.handNumber,
               hand.result,
-              0, // Minimal placeholder - not needed for consecutive analysis
-              0, // Minimal placeholder - not needed for consecutive analysis
-              '[]', // Empty array as placeholder
-              '[]', // Empty array as placeholder
-              false, // Not needed for consecutive analysis
-              false  // Not needed for consecutive analysis
+              hasFullData ? (hand.playerTotal || 0) : 0,
+              hasFullData ? (hand.bankerTotal || 0) : 0,
+              hasFullData ? JSON.stringify(hand.playerCards) : '[]',
+              hasFullData ? JSON.stringify(hand.bankerCards) : '[]',
+              hasFullData ? (hand.bankerPair || false) : false,
+              hasFullData ? (hand.playerPair || false) : false
             ]);
           }
         } finally {

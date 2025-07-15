@@ -32,6 +32,10 @@ const getCardImagePath = (card) => {
 // Function to analyze consecutive wins from game results using Big Road logic
 const analyzeConsecutiveWins = (gameData) => {
   if (!gameData) return [];
+  
+  // Additional safety checks for empty or invalid data
+  if (Array.isArray(gameData) && gameData.length === 0) return [];
+  if (typeof gameData === 'object' && !gameData.hands && !gameData.games) return [];
 
   // Use the same convertGameResults function as RoadTwo.js
   const convertGameResults = (results) => {
@@ -40,7 +44,7 @@ const analyzeConsecutiveWins = (gameData) => {
 
     // Function to detect pairs in cards
     const hasPair = (cards) => {
-      return cards.length >= 2 && cards[0].value === cards[1].value;
+      return cards && Array.isArray(cards) && cards.length >= 2 && cards[0] && cards[1] && cards[0].value === cards[1].value;
     };
 
     // Check if results is a single game object with hands array
@@ -67,8 +71,34 @@ const analyzeConsecutiveWins = (gameData) => {
     } else if (Array.isArray(results)) {
       // Original nested structure - process as before
       results.forEach((play) => {
-        play.games.forEach((game) => {
-          game.hands.forEach((hand) => {
+        // Check if play has games property and it's an array
+        if (play && play.games && Array.isArray(play.games)) {
+          play.games.forEach((game) => {
+            // Check if game has hands property and it's an array
+            if (game && game.hands && Array.isArray(game.hands)) {
+              game.hands.forEach((hand) => {
+                converted.push({
+                  id: handId++,
+                  outcome:
+                    hand.result === "Player"
+                      ? "閑"
+                      : hand.result === "Banker"
+                      ? "莊"
+                      : "和",
+                  type: hand.result.toLowerCase(),
+                  bankPair: hasPair(hand.bankerCards || []),
+                  playerPair: hasPair(hand.playerCards || []),
+                  playerTotal: hand.playerTotal,
+                  bankerTotal: hand.bankerTotal,
+                  playerCards: hand.playerCards || [],
+                  bankerCards: hand.bankerCards || [],
+                });
+              });
+            }
+          });
+        } else if (play && play.hands && Array.isArray(play.hands)) {
+          // Handle case where play object directly contains hands (alternative structure)
+          play.hands.forEach((hand) => {
             converted.push({
               id: handId++,
               outcome:
@@ -78,15 +108,15 @@ const analyzeConsecutiveWins = (gameData) => {
                   ? "莊"
                   : "和",
               type: hand.result.toLowerCase(),
-              bankPair: hasPair(hand.bankerCards),
-              playerPair: hasPair(hand.playerCards),
+              bankPair: hasPair(hand.bankerCards || []),
+              playerPair: hasPair(hand.playerCards || []),
               playerTotal: hand.playerTotal,
               bankerTotal: hand.bankerTotal,
-              playerCards: hand.playerCards,
-              bankerCards: hand.bankerCards,
+              playerCards: hand.playerCards || [],
+              bankerCards: hand.bankerCards || [],
             });
           });
-        });
+        }
       });
     }
 
@@ -210,6 +240,7 @@ const View = ({
   setConsecutiveWinsCache,
   addLog,
   setTableViewData,
+  convertBackendCardsArray,
 }) => {
   // No longer needed! Backend now returns pre-computed table data
   // This eliminates the frontend performance bottleneck for large datasets
@@ -386,6 +417,21 @@ const View = ({
                               pagination.pageSize,
                               addLog
                             );
+                            
+                            // Convert card data in games if hands are included
+                            if (newData.games) {
+                              newData.games = newData.games.map(game => {
+                                if (game.hands && Array.isArray(game.hands)) {
+                                  game.hands = game.hands.map(hand => ({
+                                    ...hand,
+                                    playerCards: convertBackendCardsArray(hand.playerCards || hand.player_cards),
+                                    bankerCards: convertBackendCardsArray(hand.bankerCards || hand.banker_cards)
+                                  }));
+                                }
+                                return game;
+                              });
+                            }
+                            
                             setTableViewData(newData);
                           } catch (error) {
                             console.error("Error loading page:", error);
@@ -554,6 +600,63 @@ const Playground = () => {
   const [optimizationLevel, setOptimizationLevel] = useState('standard');
   const [simulationTiming, setSimulationTiming] = useState(null);
 
+  // Helper function to convert backend card format to frontend format
+  const convertBackendCardToFrontend = (backendCard) => {
+    // Handle different possible backend card formats
+    if (typeof backendCard === 'string') {
+      try {
+        // If it's a JSON string, parse it
+        backendCard = JSON.parse(backendCard);
+      } catch (e) {
+        // If parsing fails, assume it's a card string like "AS" (Ace of Spades)
+        if (backendCard.length >= 2) {
+          const value = backendCard.slice(0, -1);
+          const suitLetter = backendCard.slice(-1);
+          const suitMapping = { 'S': '♠', 'H': '♥', 'D': '♦', 'C': '♣' };
+          return {
+            value: value === 'T' ? '10' : value,
+            suit: suitMapping[suitLetter] || suitLetter
+          };
+        }
+        return { value: 'A', suit: '♠' }; // fallback
+      }
+    }
+
+    // Handle object format with different property names
+    if (typeof backendCard === 'object' && backendCard !== null) {
+      return {
+        value: backendCard.value || backendCard.rank || backendCard.card_value || 'A',
+        suit: backendCard.suit || backendCard.card_suit || '♠'
+      };
+    }
+
+    // Fallback
+    return { value: 'A', suit: '♠' };
+  };
+
+  // Helper function to convert array of backend cards to frontend format
+  const convertBackendCardsArray = (backendCards) => {
+    if (!backendCards) return [];
+    
+    // Handle if it's a JSON string
+    if (typeof backendCards === 'string') {
+      try {
+        backendCards = JSON.parse(backendCards);
+      } catch (e) {
+        console.warn('Failed to parse cards JSON:', backendCards);
+        return [];
+      }
+    }
+
+    // Ensure it's an array
+    if (!Array.isArray(backendCards)) {
+      console.warn('Cards data is not an array:', backendCards);
+      return [];
+    }
+
+    return backendCards.map(convertBackendCardToFrontend);
+  };
+
   const handleGameStart = (plays, gameResultsData, playCardsData, simId, optLevel, totalGames, timing) => {
     console.log('Received game results:', gameResultsData);
     console.log('Optimization level:', optLevel);
@@ -682,6 +785,20 @@ const Playground = () => {
           // Standard/mega mode: load from database
           const detailedPlayData = await BaccaratAPI.getPlayGames(simulationId, playData.playNumber, 1, 1000, addLog);
           
+          // Convert card data in games if hands are included
+          if (detailedPlayData.games) {
+            detailedPlayData.games = detailedPlayData.games.map(game => {
+              if (game.hands && Array.isArray(game.hands)) {
+                game.hands = game.hands.map(hand => ({
+                  ...hand,
+                  playerCards: convertBackendCardsArray(hand.playerCards || hand.player_cards),
+                  bankerCards: convertBackendCardsArray(hand.bankerCards || hand.banker_cards)
+                }));
+              }
+              return game;
+            });
+          }
+          
           setTableViewData(detailedPlayData);
           setShowTableView(true);
           setShowDetailedView(false);
@@ -710,14 +827,14 @@ const Playground = () => {
         // Load hands from backend API as fallback
         const handsResponse = await BaccaratAPI.getGameHands(gameData.gameId);
         
-        // Convert backend hands format to frontend format
+        // Convert backend hands format to frontend format with proper card conversion
         const convertedHands = handsResponse.hands.map(hand => ({
           handNumber: hand.hand_number,
           result: hand.result,
           playerTotal: hand.player_total,
           bankerTotal: hand.banker_total,
-          playerCards: hand.player_cards,
-          bankerCards: hand.banker_cards,
+          playerCards: convertBackendCardsArray(hand.player_cards),
+          bankerCards: convertBackendCardsArray(hand.banker_cards),
           bankerPair: hand.banker_pair,
           playerPair: hand.player_pair
         }));
@@ -781,6 +898,8 @@ const Playground = () => {
           consecutiveWinsCache={consecutiveWinsCache}
           setConsecutiveWinsCache={setConsecutiveWinsCache}
           addLog={addLog}
+          setTableViewData={setTableViewData}
+          convertBackendCardsArray={convertBackendCardsArray}
         />
       </Splitter.Panel>
       <Splitter.Panel max="20%" min="10%" defaultSize="20%">
