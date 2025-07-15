@@ -1,196 +1,218 @@
-# Build Instructions for Baccarat Game
+# Baccarat Game - Build Instructions
+
+## Project Overview
+This is a real baccarat simulation application built with React frontend and Electron backend, featuring authentic 8-deck gameplay with proper baccarat rules.
 
 ## Prerequisites
+- Node.js (v14 or higher)
+- Yarn package manager
+- Git
 
-Before building the application, ensure you have the following installed:
+## Development Setup
 
-1. **Node.js** (v16 or higher)
-2. **Yarn** package manager
-3. **Electron** and **electron-builder** (included in devDependencies)
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd baccarat-game
+   ```
 
-## Project Structure
+2. **Install dependencies**
+   ```bash
+   yarn install
+   ```
 
-This project consists of three main components:
-- **Frontend**: React application in the `client/` directory
-- **Backend**: Node.js server in the `server/` directory  
-- **Electron**: Desktop wrapper in the `electron/` directory
+3. **Install client dependencies**
+   ```bash
+   cd client
+   yarn install
+   cd ..
+   ```
 
-## Building the Complete Application
+4. **Install server dependencies**
+   ```bash
+   cd server
+   yarn install
+   cd ..
+   ```
 
-### 1. Install Dependencies
+## Development Scripts
 
-Install all dependencies for all components:
-
+### Frontend Development
 ```bash
-# Install root dependencies
-yarn install
+cd client
+yarn start
+```
+This starts the React development server on `http://localhost:3000`
 
-# Install client dependencies
-cd client && yarn install && cd ..
+### Backend Server (Standalone)
+```bash
+cd server
+yarn start
+# or for large simulations
+yarn start:large
+```
+This starts the backend API server on `http://localhost:3001`
 
-# Install server dependencies
-cd server && yarn install && cd ..
+### Electron Development
+```bash
+# Standard mode
+yarn electron-dev
+
+# Large dataset mode (8GB memory)
+yarn electron-dev-large
 ```
 
-### 2. Build for Production
+## Building for Production
 
-To create a complete DMG package for macOS:
-
+### Prerequisites for Building
 ```bash
-# Build everything and create DMG
-yarn pack
+yarn prebuild
 ```
 
-This command will:
-1. Build the React frontend (`yarn build-react`)
-2. Install production server dependencies (`yarn install-server-deps`)
-3. Package everything into a DMG file (`yarn build-mac`)
-
-### 3. Platform-Specific Builds
-
-#### macOS DMG (Recommended)
+### Build React Client
 ```bash
-yarn build-mac
+cd client
+yarn build
+cd ..
 ```
 
-#### Windows EXE
+### Build Windows Executable
 ```bash
 yarn build-win
 ```
 
-#### Linux AppImage
+This creates:
+- `dist/Baccarat Game 1.0.0.exe` (Portable)
+- `dist/Baccarat Game Setup 1.0.0.exe` (Installer)
+
+### Build for Other Platforms
 ```bash
-yarn build-linux
+yarn build-mac    # macOS
+yarn build-linux  # Linux
+yarn build-all    # All platforms
 ```
 
-## Output
+## Large Dataset Optimization
 
-The built application will be located in the `dist/` directory:
-- **macOS**: `dist/Baccarat Game-1.0.0.dmg`
-- **Windows**: `dist/Baccarat Game Setup 1.0.0.exe`
-- **Linux**: `dist/Baccarat Game-1.0.0.AppImage`
+The application includes built-in protection for handling very large datasets (millions of games):
 
-## Installation and Usage
+### Size Limit Protection
+- **Limit**: 500 games per API response
+- **Behavior**: When exceeded, API returns empty `games` and `tableData` arrays
+- **Benefits**: Prevents JSON overload and system crashes
 
-### macOS DMG Installation
-
-1. Open the generated DMG file
-2. Drag "Baccarat Game" to the Applications folder
-3. Launch the application from Applications
-4. The app will automatically start both the frontend and backend services
-
-### How It Works
-
-The packaged application includes:
-- **React Frontend**: Pre-built static files
-- **Node.js Backend**: Complete server with dependencies
-- **Electron Wrapper**: Desktop application framework
-- **Auto-Startup**: Backend server starts automatically when the app launches
-
-When you launch the application:
-1. Electron starts the desktop window
-2. The Node.js backend server starts on port 3001
-3. The React frontend loads and connects to the backend
-4. Everything runs locally on your machine
-
-## Development Mode
-
-For development with hot-reload:
-
-```bash
-# Start development mode with frontend, backend, and electron
-yarn electron-dev
-
-# For large simulations (increased memory)
-yarn electron-dev-large
+### API Response for Large Datasets
+```json
+{
+  "playNumber": 1,
+  "tableData": [],  // Empty when size > 500
+  "consecutiveWinsData": [...], // Always included
+  "pagination": {
+    "page": 1,
+    "pageSize": 0,
+    "total": 1000000,  // Actual total
+    "totalPages": 0,
+    "hasMore": false
+  },
+  "summary": {
+    "totalGames": 1000000,
+    "dataLimitExceeded": true,
+    "limit": 500,
+    "message": "Dataset contains 1,000,000 games. Data arrays empty to prevent system overload. Use summary statistics instead."
+  },
+  "games": []  // Empty when size > 500
+}
 ```
 
-## Build Options
-
-- **Regular Build**: `yarn pack` - Standard memory allocation
-- **Large Build**: `yarn pack-large` - For large simulations with increased memory
-
-## Troubleshooting
-
-### Build Issues
-
-1. **Missing Dependencies**: Run `yarn install` in all directories
-2. **Port Conflicts**: Ensure ports 3000 and 3001 are available
-3. **Icon Issues**: Icons are automatically generated from the React logo
-
-### Runtime Issues
-
-1. **Server Not Starting**: Check that the backend server dependencies are installed
-2. **Frontend Not Loading**: Verify that the React build completed successfully
-3. **Database Issues**: SQLite database will be created automatically
-4. **White Screen/CSS Not Found**: The app uses relative paths (`homepage: "./"`) to work in Electron. If you see file loading errors, the React build should automatically handle this.
-
-### Common Fixes
-
-- **ERR_FILE_NOT_FOUND for CSS/JS**: This was fixed by adding `"homepage": "./"` to `client/package.json`
-- **JavaScript Required Error**: Make sure the React build completed and uses relative paths
-- **macOS Security Warning**: Right-click the app and select "Open" to bypass unsigned app warnings
-
-### Server Not Starting in Packaged App
-
-If you see "Failed to fetch" errors when running simulations:
-
-1. **Open Developer Console**: Right-click in the app → "Inspect Element" → Console tab
-2. **Check Server Logs**: The app will show detailed logging about server startup attempts
-3. **Common Server Issues**:
-   - **Database initialization failed**: Close and restart the app
-   - **Port 3001 in use**: Close other applications using this port
-   - **File permissions**: Ensure the app has proper write permissions
-   - **Worker threads failed**: Check if Node.js worker_threads are supported
-
-### Debug Mode
-
-The latest build includes debugging features:
-- **Detailed logging**: Server startup attempts are logged to console
-- **Auto-DevTools**: If server doesn't start within 10 seconds, DevTools open automatically
-- **Health checks**: App tests server connectivity before loading frontend
-
-### Testing Server Manually
-
-To verify the server works outside the packaged app:
-
-```bash
-# Start server manually in development
-cd server && node index.js
-
-# Test health check (in another terminal)
-curl http://localhost:3001/api/health
-
-# Test simulation endpoint
-curl -X POST http://localhost:3001/api/simulations \
-  -H "Content-Type: application/json" \
-  -d '{"plays":1,"gamesPerPlay":10,"handsPerGame":5,"useInMemory":true}'
-```
-
-### Expected Behavior
-
-When the app starts correctly:
-1. **Server startup logs** appear in DevTools console
-2. **"Server is ready"** message indicates backend is running
-3. **Frontend loads** and shows the baccarat game interface
-4. **Simulations work** without "Failed to fetch" errors
+### Frontend Handling
+- Shows informative message when data limit exceeded
+- Displays total game count with proper formatting
+- Still shows consecutive wins analysis (always computed)
+- Provides suggestions for handling large datasets
 
 ## Architecture
 
-- **Frontend**: React app serves the user interface
-- **Backend**: Express.js server with SQLite database
-- **Electron**: Provides native desktop app functionality
-- **Auto-packaging**: All components bundled together for one-click deployment
+### Frontend (React)
+- **Location**: `client/`
+- **Main Components**:
+  - `src/playground/` - Main simulation interface
+  - `src/services/api.js` - Backend communication
+  - `src/components/` - Reusable UI components
 
-## Configuration
+### Backend (Express)
+- **Location**: `server/`
+- **Features**:
+  - Real baccarat simulation engine
+  - SQLite database for large datasets
+  - Multi-threaded processing with worker threads
+  - Memory optimization for large simulations
 
-The build configuration is in `package.json` under the `build` section:
-- Icons are in the `assets/` directory
-- Server files are unpacked for execution
-- DMG includes drag-to-Applications setup
+### Electron App
+- **Location**: `electron/`
+- **Features**:
+  - Embedded backend server
+  - Real baccarat game logic
+  - Large dataset optimization
+  - Cross-platform desktop app
 
-## Security
+## Real Baccarat Features
 
-- Node integration is disabled in the renderer process
-- Context isolation is enabled for security
-- Server runs locally only (no external network access required)
+### Authentic Game Logic
+- **8-deck shoe** with proper shuffling
+- **Real card values** (A=1, 10/J/Q/K=0, others face value)
+- **Modulo 10 scoring** for authentic baccarat totals
+- **Third card rules** exactly as in real casinos
+- **Natural wins** (8 or 9 points with first two cards)
+- **Pair detection** for side bets
+
+### Simulation Capabilities
+- **Multiple optimization levels**:
+  - Ultra-fast: Pure in-memory (no database)
+  - Mega: Large datasets with pre-computed analysis
+  - Standard: Full database storage
+- **Parallel processing** using all CPU cores
+- **Memory management** for datasets up to millions of games
+- **Real-time progress tracking**
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Memory errors with large simulations**
+   - Use `yarn electron-dev-large` for development
+   - Built Windows exe includes 8GB memory allocation
+
+2. **API timeouts**
+   - Large datasets are automatically optimized
+   - Table data limited to prevent system overload
+
+3. **Build failures**
+   - Ensure all dependencies are installed: `yarn install`
+   - Clear cache: `yarn cache clean`
+   - Rebuild: `yarn prebuild && yarn build-win`
+
+### Performance Tips
+- Use in-memory mode for datasets < 10,000 games
+- For million+ games, expect table data to be limited
+- Consecutive analysis always works regardless of size
+- Monitor memory usage during large simulations
+
+## File Structure
+```
+baccarat-game/
+├── client/           # React frontend
+│   ├── src/
+│   ├── public/
+│   └── build/        # Built frontend
+├── server/           # Express backend
+│   ├── index.js      # Main server
+│   └── simulationWorker.js
+├── electron/         # Electron main process
+│   └── main.js       # Embedded server + window
+├── dist/             # Built executables
+├── assets/           # App icons/images
+└── package.json      # Main package configuration
+```
+
+## License
+This project contains real baccarat simulation logic and is intended for educational and simulation purposes.

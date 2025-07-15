@@ -397,7 +397,7 @@ function createEmbeddedServer() {
         const existingEntry = analysis.find(entry => entry.length === currentStreak);
         if (existingEntry) {
           existingEntry.count++;
-        } else {
+      } else {
           analysis.push({ length: currentStreak, count: 1 });
         }
       }
@@ -429,19 +429,37 @@ function createEmbeddedServer() {
     console.log(`📊 Pre-computed table data for play ${playNumber}: ${play.games.length} games`);
     console.log(`📊 Pre-computed consecutive wins data for play ${playNumber}: ${consecutiveWinsData.length} data points`);
     
+    // Check if dataset is too large (> 500 games) to prevent JSON overload
+    const totalGames = play.games.length;
+    const SIZE_LIMIT = 500;
+    const isDatasetTooLarge = totalGames > SIZE_LIMIT;
+    
+    if (isDatasetTooLarge) {
+      console.log(`⚠️ Dataset too large (${totalGames} games > ${SIZE_LIMIT}). Returning summary data only to prevent system overload.`);
+    }
+    
     res.json({ 
       playNumber: parseInt(playNumber),
-      tableData: tableData, // Pre-computed table data!
-      consecutiveWinsData: consecutiveWinsData, // Pre-computed consecutive wins data!
+      tableData: isDatasetTooLarge ? [] : tableData, // Empty if too large
+      consecutiveWinsData: consecutiveWinsData, // Always include analysis
       pagination: {
         page: 1,
-        pageSize: play.games.length,
+        pageSize: isDatasetTooLarge ? 0 : play.games.length,
         total: play.games.length,
-        totalPages: 1,
+        totalPages: isDatasetTooLarge ? 0 : 1,
         hasMore: false
       },
-      // Also include raw games data for backward compatibility
-      games: play.games.map(game => ({
+      // Include summary info for large datasets
+      summary: {
+        totalGames: totalGames,
+        dataLimitExceeded: isDatasetTooLarge,
+        limit: SIZE_LIMIT,
+        message: isDatasetTooLarge 
+          ? `Dataset contains ${totalGames} games. Data arrays empty to prevent system overload. Use summary statistics instead.`
+          : `Dataset size: ${totalGames} games (within limit)`
+      },
+      // Raw games data - empty if too large
+      games: isDatasetTooLarge ? [] : play.games.map(game => ({
         gameNumber: game.gameNumber,
         gameId: game.gameId,
         totalHands: game.totalHands,

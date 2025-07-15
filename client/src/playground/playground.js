@@ -350,8 +350,42 @@ const View = ({
           />
         )}
 
-        {/* Large Table Show/Hide Logic */}
-        {isLargeTable && !showLargeTable ? (
+        {/* Check if dataset exceeds limit */}
+        {tableViewData.summary?.dataLimitExceeded ? (
+          <div className="table-view-content">
+            <Card
+              className="table-view-card"
+              style={{ textAlign: "center", padding: "40px" }}
+            >
+              <div style={{ marginBottom: "16px" }}>
+                <h4 style={{ color: "#fa8c16" }}>📊 數據集過大</h4>
+                <p style={{ color: "#666", marginBottom: "8px" }}>
+                  此數據集包含 <strong>{tableViewData.summary.totalGames.toLocaleString()}</strong> 局遊戲
+                </p>
+                <p style={{ color: "#666", marginBottom: "8px" }}>
+                  超過安全限制 ({tableViewData.summary.limit} 局)
+                </p>
+                <p style={{ color: "#fa8c16", marginBottom: "20px", fontWeight: "bold" }}>
+                  表格數據已省略以防止系統崩潰
+                </p>
+                <div style={{ 
+                  backgroundColor: "#fff7e6", 
+                  border: "1px solid #ffd591", 
+                  borderRadius: "6px",
+                  padding: "16px",
+                  marginBottom: "16px"
+                }}>
+                  <h5 style={{ margin: "0 0 8px 0", color: "#d46b08" }}>💡 建議操作:</h5>
+                  <ul style={{ textAlign: "left", color: "#666", margin: 0, paddingLeft: "20px" }}>
+                    <li>查看上方的連續開莊閑次數統計圖表</li>
+                    <li>使用較少的遊戲數量重新運行模擬</li>
+                    <li>分批處理大型數據集</li>
+                  </ul>
+                </div>
+              </div>
+            </Card>
+          </div>
+        ) : isLargeTable && !showLargeTable ? (
           <div className="table-view-content">
             <Card
               className="table-view-card"
@@ -803,7 +837,14 @@ const Playground = () => {
           setShowTableView(true);
           setShowDetailedView(false);
           
-          addLog(`✅ Loaded ${detailedPlayData.games.length} games for play ${playData.playNumber}`);
+          // Check if data was limited due to size
+          if (detailedPlayData.summary?.dataLimitExceeded) {
+            addLog(`⚠️ Large dataset detected: ${detailedPlayData.summary.totalGames.toLocaleString()} games for play ${playData.playNumber}`);
+            addLog(`📊 Table data limited to prevent system overload (limit: ${detailedPlayData.summary.limit} games)`);
+            addLog(`✅ Consecutive analysis and summary statistics loaded successfully`);
+          } else {
+            addLog(`✅ Loaded ${detailedPlayData.games.length} games for play ${playData.playNumber}`);
+          }
         }
       } catch (error) {
         console.error('Error loading play data:', error);
