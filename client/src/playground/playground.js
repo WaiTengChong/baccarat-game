@@ -711,19 +711,41 @@ const Playground = () => {
     // Create enhanced play cards data with timing information
     const enhancedPlayCardsData = playCardsData.map((playCard, index) => {
       const playData = gameResultsData.find(result => result.playNumber === playCard.playNumber);
+      
+      // For ultra-large mode, calculate games per play from total
+      let gamesPerPlay = 0;
+      if (playData) {
+        if (playData.summary?.totalGames) {
+          gamesPerPlay = playData.summary.totalGames;
+        } else if (playData.games && playData.games.length > 0) {
+          gamesPerPlay = playData.games.length;
+        } else if (optLevel === 'ultra-large' && totalGames && plays) {
+          // For ultra-large mode, estimate games per play
+          gamesPerPlay = Math.round(totalGames / plays);
+        }
+      }
+      
       return {
         ...playCard,
         timing: timing,
         optimizationLevel: optLevel,
-        totalGames: playData ? playData.games.length : 0,
-        totalPlays: plays
+        totalGames: gamesPerPlay,
+        totalPlays: plays,
+        ultraLarge: (optLevel === 'ultra-large') || (playData?.ultraLarge || false)
       };
     });
     
     setPlayCardsData(enhancedPlayCardsData);
     setGameResults(gameResultsData);
     
-    if (optLevel === 'ultra-fast') {
+    if (optLevel === 'ultra-large') {
+      addLog(`🚀 ULTRA-LARGE simulation completed with ${gameResultsData.length} plays (${totalGames.toLocaleString()} games)`);
+      addLog(`⚡ Minimal response mode: Only consecutive analysis and summary data returned`);
+      addLog(`📊 Individual game data excluded to prevent JSON overflow`);
+      if (timing) {
+        addLog(`⏱️ Execution time: ${timing.duration}s (${timing.handsPerSecond} hands/second)`);
+      }
+    } else if (optLevel === 'ultra-fast') {
       addLog(`⚡ ULTRA-FAST in-memory simulation completed with ${gameResultsData.length} plays (${totalGames} games)`);
       addLog(`🚀 All data computed in-memory - no database operations performed!`);
       if (timing) {
@@ -748,7 +770,47 @@ const Playground = () => {
       try {
         addLog(`📋 Loading detailed data for play ${playData.playNumber}...`);
         
-        if (optimizationLevel === 'ultra-fast') {
+        if (optimizationLevel === 'ultra-large' || playData.ultraLarge) {
+          // Ultra-large mode: only show consecutive analysis
+          const playResult = gameResults.find(result => result.playNumber === playData.playNumber);
+          
+          if (playResult) {
+            // Calculate total games from available data since summary might not exist
+            const totalGames = playResult.summary?.totalGames || 
+                             playResult.games?.length || 
+                             playData.totalGames || 
+                             0;
+            
+            const ultraLargeTableData = {
+              playNumber: playData.playNumber,
+              tableData: [], // Empty for ultra-large datasets
+              consecutiveWinsData: playResult.consecutiveWinsData, // This is what we have!
+              games: [],
+              summary: {
+                totalGames: totalGames,
+                dataLimitExceeded: true,
+                limit: 0,
+                message: `Ultra-large dataset (${totalGames.toLocaleString()} games). Only consecutive analysis available.`
+              },
+              pagination: {
+                page: 1,
+                pageSize: 0,
+                total: totalGames,
+                totalPages: 0,
+                hasMore: false
+              }
+            };
+            
+            setTableViewData(ultraLargeTableData);
+            setShowTableView(true);
+            setShowDetailedView(false);
+            
+            addLog(`🚀 Ultra-large: Showing consecutive analysis for play ${playData.playNumber} (${playResult.summary.totalGames.toLocaleString()} games)`);
+            addLog(`📊 Individual game data excluded for performance (ultra-large mode)`);
+          } else {
+            addLog(`❌ No data found for play ${playData.playNumber} in ultra-large mode`);
+          }
+        } else if (optimizationLevel === 'ultra-fast') {
           // Ultra-fast mode: use in-memory data
           const playResult = gameResults.find(result => result.playNumber === playData.playNumber);
           

@@ -120,7 +120,169 @@ function hasPair(cards) {
   return cards.length >= 2 && cards[0].value === cards[1].value;
 }
 
-// Real Baccarat Simulation Function
+// Ultra-fast minimal simulation for massive datasets (only computes consecutive analysis)
+function runMinimalSimulation(plays, gamesPerPlay, handsPerGame, deckCount = 8) {
+  console.log(`🚀 Running ULTRA-FAST minimal simulation: ${plays} plays × ${gamesPerPlay} games × ${handsPerGame} hands`);
+  const startTime = Date.now();
+  const results = [];
+  
+  for (let play = 1; play <= plays; play++) {
+    // Aggregate consecutive analysis for this entire play
+    const consecutiveAnalysis = {
+      consecutiveBanker: [],
+      consecutivePlayer: [],
+      consecutiveTie: []
+    };
+    
+    let totalPlayHands = 0;
+    let totalPlayBankerWins = 0;
+    let totalPlayPlayerWins = 0;
+    let totalPlayTies = 0;
+    let totalPlayBankerPairs = 0;
+    let totalPlayPlayerPairs = 0;
+    
+    for (let game = 1; game <= gamesPerPlay; game++) {
+      // Create and shuffle deck for this game
+      let deck = createDeck(deckCount);
+      deck = shuffleDeck(deck);
+      
+      let bankerWins = 0, playerWins = 0, tieWins = 0;
+      let bankerPairs = 0, playerPairs = 0;
+      
+      // Track consecutive patterns for this game
+      let currentStreak = 1;
+      let currentWinner = null;
+      
+      // Play the specified number of hands (but don't store them!)
+      for (let hand = 1; hand <= handsPerGame; hand++) {
+        // Check if we need to reshuffle (when deck gets low)
+        if (deck.length < 20) {
+          deck = createDeck(deckCount);
+          deck = shuffleDeck(deck);
+        }
+        
+        const handResult = playBaccaratHand(deck);
+        deck = handResult.remainingDeck;
+        
+        // Count wins
+        if (handResult.result === 'Banker') bankerWins++;
+        else if (handResult.result === 'Player') playerWins++;
+        else tieWins++;
+        
+        // Check for pairs
+        const playerPair = hasPair(handResult.playerCards);
+        const bankerPair = hasPair(handResult.bankerCards);
+        if (playerPair) playerPairs++;
+        if (bankerPair) bankerPairs++;
+        
+        // Track consecutive patterns (for matchingData.js)
+        if (handResult.result === currentWinner) {
+          currentStreak++;
+        } else {
+          // End of streak, record it
+          if (currentWinner && currentStreak > 0) {
+            const analysis = currentWinner === 'Banker' ? consecutiveAnalysis.consecutiveBanker :
+                           currentWinner === 'Player' ? consecutiveAnalysis.consecutivePlayer :
+                           consecutiveAnalysis.consecutiveTie;
+            
+            const existingEntry = analysis.find(entry => entry.length === currentStreak);
+            if (existingEntry) {
+              existingEntry.count++;
+            } else {
+              analysis.push({ length: currentStreak, count: 1 });
+            }
+          }
+          
+          currentWinner = handResult.result;
+          currentStreak = 1;
+        }
+      }
+      
+      // Record final streak for this game
+      if (currentWinner && currentStreak > 0) {
+        const analysis = currentWinner === 'Banker' ? consecutiveAnalysis.consecutiveBanker :
+                       currentWinner === 'Player' ? consecutiveAnalysis.consecutivePlayer :
+                       consecutiveAnalysis.consecutiveTie;
+        
+        const existingEntry = analysis.find(entry => entry.length === currentStreak);
+        if (existingEntry) {
+          existingEntry.count++;
+        } else {
+          analysis.push({ length: currentStreak, count: 1 });
+        }
+      }
+      
+      // Aggregate totals
+      totalPlayHands += handsPerGame;
+      totalPlayBankerWins += bankerWins;
+      totalPlayPlayerWins += playerWins;
+      totalPlayTies += tieWins;
+      totalPlayBankerPairs += bankerPairs;
+      totalPlayPlayerPairs += playerPairs;
+      
+      // Log progress for very large datasets
+      if (game % 10000 === 0) {
+        console.log(`🎰 Play ${play}: ${game}/${gamesPerPlay} games completed`);
+      }
+    }
+    
+    // Convert consecutive wins data to chart format for matchingData.js
+    const consecutiveWinsData = [];
+    const maxStreak = Math.max(
+      Math.max(...consecutiveAnalysis.consecutiveBanker.map(item => item.length), 0),
+      Math.max(...consecutiveAnalysis.consecutivePlayer.map(item => item.length), 0)
+    );
+    
+    for (let i = 1; i <= Math.max(maxStreak, 5); i++) {
+      const bankerEntry = consecutiveAnalysis.consecutiveBanker.find(entry => entry.length === i);
+      const playerEntry = consecutiveAnalysis.consecutivePlayer.find(entry => entry.length === i);
+      
+      consecutiveWinsData.push({
+        x: i,
+        y: bankerEntry ? bankerEntry.count : 0,
+        type: "莊",
+      });
+      consecutiveWinsData.push({
+        x: i,
+        y: playerEntry ? playerEntry.count : 0,
+        type: "閑",
+      });
+    }
+    
+    results.push({
+      playNumber: play,
+      games: [], // Empty - we don't store individual games for ultra-large datasets
+      consecutiveWinsData: consecutiveWinsData, // This is what matchingData.js needs!
+      summary: {
+        totalGames: gamesPerPlay,
+        totalHands: totalPlayHands,
+        bankerWins: totalPlayBankerWins,
+        playerWins: totalPlayPlayerWins,
+        tieWins: totalPlayTies,
+        bankerPairs: totalPlayBankerPairs,
+        playerPairs: totalPlayPlayerPairs,
+        bankerWinRate: totalPlayHands > 0 ? ((totalPlayBankerWins / totalPlayHands) * 100).toFixed(2) : 0,
+        playerWinRate: totalPlayHands > 0 ? ((totalPlayPlayerWins / totalPlayHands) * 100).toFixed(2) : 0,
+        tieRate: totalPlayHands > 0 ? ((totalPlayTies / totalPlayHands) * 100).toFixed(2) : 0
+      },
+      ultraLarge: true
+    });
+    
+    console.log(`✅ Play ${play} completed: ${gamesPerPlay} games, ${totalPlayHands} hands`);
+  }
+  
+  const endTime = Date.now();
+  const duration = (endTime - startTime) / 1000;
+  const totalHands = plays * gamesPerPlay * handsPerGame;
+  const handsPerSecond = Math.round(totalHands / duration);
+  
+  console.log(`🚀 Ultra-fast minimal simulation completed: ${totalHands} hands in ${duration.toFixed(2)}s (${handsPerSecond} hands/sec)`);
+  console.log(`📊 Only consecutive analysis computed - individual games not stored!`);
+  
+  return results;
+}
+
+// Real Baccarat Simulation Function (for smaller datasets)
 function runRealSimulation(plays, gamesPerPlay, handsPerGame, deckCount = 8) {
   console.log(`🎰 Running REAL baccarat simulation: ${plays} plays × ${gamesPerPlay} games × ${handsPerGame} hands`);
   const startTime = Date.now();
@@ -232,38 +394,76 @@ function createEmbeddedServer() {
     const { plays = 1, gamesPerPlay = 1, handsPerGame = 10, deckCount = 8 } = req.body;
     
     const simulationId = 'real-' + (++simulationCounter);
+    const totalGames = plays * gamesPerPlay;
     
     try {
-      // Run REAL baccarat simulation
-      const results = runRealSimulation(plays, gamesPerPlay, handsPerGame, deckCount);
+      // Check for ultra-large datasets that could crash JSON.stringify
+      const ULTRA_LARGE_THRESHOLD = 10000; // 10K+ games
+      const isUltraLarge = totalGames > ULTRA_LARGE_THRESHOLD;
       
-      const simulation = {
-        id: simulationId,
-        status: 'completed',
-        progress: 100,
-        plays: plays,
-        gamesPerPlay: gamesPerPlay,
-        handsPerGame: handsPerGame,
-        deckCount: deckCount,
-        created: new Date(),
-        results: results
-      };
-      
-      simulations.set(simulationId, simulation);
-      
-      // Calculate total games for frontend
-      const totalGames = results.reduce((sum, play) => sum + play.games.length, 0);
-      
-      res.json({ 
-        simulationId: simulationId,
-        id: simulationId,
-        status: 'completed',
-        optimizationLevel: 'embedded-real',
-        totalGames: totalGames,
-        results: results,  // Frontend expects 'results' not 'plays'
-        plays: results,    // Keep 'plays' for backward compatibility
-        message: 'REAL baccarat simulation completed successfully'
-      });
+      if (isUltraLarge) {
+        console.log(`🚀 ULTRA-LARGE dataset detected (${totalGames} games). Using minimal response mode.`);
+        
+        // Run minimal simulation that only computes consecutive analysis
+        const minimalResults = runMinimalSimulation(plays, gamesPerPlay, handsPerGame, deckCount);
+        
+        const simulation = {
+          id: simulationId,
+          status: 'completed',
+          progress: 100,
+          plays: plays,
+          gamesPerPlay: gamesPerPlay,
+          handsPerGame: handsPerGame,
+          deckCount: deckCount,
+          created: new Date(),
+          results: minimalResults,
+          ultraLarge: true
+        };
+        
+        simulations.set(simulationId, simulation);
+        
+        // Return minimal response for ultra-large datasets
+        res.json({ 
+          simulationId: simulationId,
+          id: simulationId,
+          status: 'completed',
+          optimizationLevel: 'ultra-large',
+          totalGames: totalGames,
+          ultraLarge: true,
+          // Only return summary and consecutive analysis - NO individual games!
+          results: minimalResults,
+          message: `ULTRA-LARGE baccarat simulation (${totalGames} games) completed - summary data only`
+        });
+        
+      } else {
+        // Standard processing for smaller datasets
+        const results = runRealSimulation(plays, gamesPerPlay, handsPerGame, deckCount);
+        
+        const simulation = {
+          id: simulationId,
+          status: 'completed',
+          progress: 100,
+          plays: plays,
+          gamesPerPlay: gamesPerPlay,
+          handsPerGame: handsPerGame,
+          deckCount: deckCount,
+          created: new Date(),
+          results: results
+        };
+        
+        simulations.set(simulationId, simulation);
+        
+        res.json({ 
+          simulationId: simulationId,
+          id: simulationId,
+          status: 'completed',
+          optimizationLevel: 'embedded-real',
+          totalGames: totalGames,
+          results: results,  // Frontend expects 'results' not 'plays'
+          plays: results,    // Keep 'plays' for backward compatibility
+          message: 'REAL baccarat simulation completed successfully'
+        });
+      }
       
     } catch (error) {
       console.error('❌ Simulation error:', error);
@@ -291,9 +491,9 @@ function createEmbeddedServer() {
       return res.status(404).json({ error: 'Simulation not found' });
     }
     
-    // Return just the plays data, no message field
+    // Return in the format expected by frontend (consistent with standalone server)
     res.json({ 
-      plays: simulation.results
+      results: simulation.results
     });
   });
 
