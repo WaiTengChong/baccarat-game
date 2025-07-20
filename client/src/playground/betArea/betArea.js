@@ -1,4 +1,4 @@
-import { Button, InputNumber, message, Progress, Select, Space, Switch, Typography } from 'antd';
+import { Button, InputNumber, message, Progress, Space, Switch, Typography } from 'antd';
 import React, { useContext, useState } from 'react';
 import { LogContext } from "../../Terminal/LongContext";
 import BaccaratAPI from "../../services/api";
@@ -143,19 +143,23 @@ const BetArea = ({ onGameStart, onResetGame }) => {
   return (
     <div className="bet-area-container">
       <Space size="large" className="bet-controls">
-          <div className="control-group">
+        <div className="control-group">
           <Text className="control-label">SHOES數:</Text>
-        <Select
+                          <InputNumber
+          min={1}
+          max={1000000}
           value={deckCount}
-          onChange={(value) => setDeckCount(value)}
+          onChange={(value) => {
+            const newDeckCount = value || 8;
+            setDeckCount(newDeckCount);
+            // Auto-adjust hands per game based on deck count (8.75 hands per deck)
+            const newHandsPerGame = Math.round(newDeckCount * 8.75);
+            setHandsPerGame(newHandsPerGame);
+          }}
           className="control-input"
           disabled={isPlaying}
           style={{ width: 80 }}
-        >
-          <Select.Option value={6}>6</Select.Option>
-          <Select.Option value={7}>7</Select.Option>
-          <Select.Option value={8}>8</Select.Option>
-        </Select>
+        />
         </div>
         <div className="control-group">
           <Text className="control-label">運行:</Text>
@@ -168,7 +172,7 @@ const BetArea = ({ onGameStart, onResetGame }) => {
             disabled={isPlaying}
           />
         </div>
-        
+
         <div className="control-group">
           <Text className="control-label">局數:</Text>
           <InputNumber
@@ -180,19 +184,19 @@ const BetArea = ({ onGameStart, onResetGame }) => {
             disabled={isPlaying}
           />
         </div>
-        
+
         <div className="control-group">
           <Text className="control-label">手:</Text>
           <InputNumber
             min={1}
-            max={70}
+            max={10000000000000}
             value={handsPerGame}
             onChange={(value) => setHandsPerGame(value || 1)}
             className="control-input"
             disabled={isPlaying}
           />
         </div>
-        
+
         <div className="control-group">
           <Text className="control-label">飛牌數:</Text>
           <InputNumber
@@ -204,10 +208,16 @@ const BetArea = ({ onGameStart, onResetGame }) => {
             disabled={isPlaying}
           />
         </div>
-        
+
         <div className="control-group">
           <Text className="control-label">模式:</Text>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+            }}
+          >
             <Switch
               checked={useInMemory}
               onChange={(checked) => setUseInMemory(checked)}
@@ -215,12 +225,18 @@ const BetArea = ({ onGameStart, onResetGame }) => {
               checkedChildren="⚡"
               unCheckedChildren="💾"
             />
-            <Text style={{ fontSize: '10px', marginTop: '4px', textAlign: 'center' }}>
-              {useInMemory ? '超快記憶體' : '資料庫儲存'}
+            <Text
+              style={{
+                fontSize: "10px",
+                marginTop: "4px",
+                textAlign: "center",
+              }}
+            >
+              {useInMemory ? "超快記憶體" : "資料庫儲存"}
             </Text>
           </div>
         </div>
-        
+
         <Button
           type="primary"
           size="large"
@@ -229,14 +245,14 @@ const BetArea = ({ onGameStart, onResetGame }) => {
           loading={isPlaying}
           disabled={isPlaying}
         >
-          {isPlaying ? '運行中...' : '運行'}
+          {isPlaying ? "運行中..." : "運行"}
         </Button>
-        
+
         {isPlaying && (
           <div className="simulation-progress">
-            <Progress 
-              percent={progress} 
-              status={progress === 100 ? 'success' : 'active'}
+            <Progress
+              percent={progress}
+              status={progress === 100 ? "success" : "active"}
               style={{ width: 200 }}
             />
             <Text style={{ marginLeft: 10, fontSize: 12 }}>
@@ -244,7 +260,7 @@ const BetArea = ({ onGameStart, onResetGame }) => {
             </Text>
           </div>
         )}
-        
+
         <Button
           size="large"
           onClick={handleReset}
