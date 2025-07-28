@@ -120,8 +120,14 @@ const BetArea = ({ onGameStart, onResetGame }) => {
         addLog(`⏱️ Performance: ${timingInfo.duration}s execution time (${timingInfo.handsPerSecond} hands/second)`);
       }
       
-      // Pass results to parent component including simulation ID, optimization info, and timing
-      onGameStart(plays, frontendResults, newPlayCardsData, response.simulationId, response.optimizationLevel, response.totalGames, timingInfo);
+      // Pass results to parent component including simulation ID, optimization info, timing, and simulation settings
+      onGameStart(plays, frontendResults, newPlayCardsData, response.simulationId, response.optimizationLevel, response.totalGames, timingInfo, {
+        deckCount,
+        gamesPerPlay,
+        handsPerGame,
+        skipCard,
+        useInMemory
+      });
       
     } catch (error) {
       console.error('Simulation error:', error);

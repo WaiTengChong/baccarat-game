@@ -241,6 +241,7 @@ const View = ({
   addLog,
   setTableViewData,
   convertBackendCardsArray,
+  simulationSettings,
 }) => {
   // No longer needed! Backend now returns pre-computed table data
   // This eliminates the frontend performance bottleneck for large datasets
@@ -324,6 +325,11 @@ const View = ({
             </button>
             <h3>
               第{tableViewData.playNumber}局 - 遊戲統計 一共 {totalRows}局
+              {simulationSettings && (
+                <span style={{ fontSize: '0.9em', color: '#666', fontWeight: 'normal' }}>
+                  {' '}({simulationSettings.deckCount}SHOE {simulationSettings.gamesPerPlay}局 {simulationSettings.handsPerGame}手 飛牌數 {simulationSettings.skipCard})
+                </span>
+              )}
               {pagination.totalPages > 1 &&
                 ` (第${pagination.page}/${pagination.totalPages}頁)`}
             </h3>
@@ -633,6 +639,7 @@ const Playground = () => {
   const [consecutiveWinsCache, setConsecutiveWinsCache] = useState({});
   const [optimizationLevel, setOptimizationLevel] = useState('standard');
   const [simulationTiming, setSimulationTiming] = useState(null);
+  const [simulationSettings, setSimulationSettings] = useState(null);
 
   // Helper function to convert backend card format to frontend format
   const convertBackendCardToFrontend = (backendCard) => {
@@ -691,7 +698,7 @@ const Playground = () => {
     return backendCards.map(convertBackendCardToFrontend);
   };
 
-  const handleGameStart = (plays, gameResultsData, playCardsData, simId, optLevel, totalGames, timing) => {
+  const handleGameStart = (plays, gameResultsData, playCardsData, simId, optLevel, totalGames, timing, settings) => {
     console.log('Received game results:', gameResultsData);
     console.log('Optimization level:', optLevel);
     console.log('Timing info:', timing);
@@ -707,6 +714,7 @@ const Playground = () => {
     setSimulationId(simId);
     setOptimizationLevel(optLevel);
     setSimulationTiming(timing);
+    setSimulationSettings(settings);
     
     // Create enhanced play cards data with timing information
     const enhancedPlayCardsData = playCardsData.map((playCard, index) => {
@@ -981,6 +989,7 @@ const Playground = () => {
     setDetailedViewData(null);
     setSimulationId(null);
     setConsecutiveWinsCache({});
+    setSimulationSettings(null);
   };
 
   return (
@@ -1003,6 +1012,7 @@ const Playground = () => {
           addLog={addLog}
           setTableViewData={setTableViewData}
           convertBackendCardsArray={convertBackendCardsArray}
+          simulationSettings={simulationSettings}
         />
       </Splitter.Panel>
       <Splitter.Panel max="20%" min="10%" defaultSize="20%">
