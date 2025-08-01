@@ -295,6 +295,123 @@ function computeConsecutiveWinsAnalysis(allHandResults) {
   return columnCounts;
 }
 
+// Continuous simulation function for "no hands limit" mode
+function simulateGameBatchContinuous(workload, handsPerGame, deckCount, skipCard = 0) {
+  const results = [];
+  
+  // Group workload by play number for continuous simulation
+  const playGroups = {};
+  workload.forEach(({playNumber, gameNumber}) => {
+    if (!playGroups[playNumber]) {
+      playGroups[playNumber] = [];
+    }
+    playGroups[playNumber].push(gameNumber);
+  });
+  
+  // Process each play continuously
+  for (const [playNumber, gameNumbers] of Object.entries(playGroups)) {
+    gameNumbers.sort((a, b) => a - b); // Ensure games are in order
+    
+    // Initialize continuous deck for this play
+    let continuousDeck = shuffleDeck(createDeck(deckCount));
+    
+    // Skip cards at the beginning of the play if specified
+    const skippedCards = [];
+    for (let i = 0; i < skipCard; i++) {
+      if (continuousDeck.length > 0) {
+        const skippedCard = continuousDeck.pop();
+        skippedCards.push(skippedCard);
+      }
+    }
+    
+    // Log skipped cards for the first game of this play
+    if (skippedCards.length > 0) {
+      parentPort.postMessage({
+        type: 'skippedCards',
+        playNumber: parseInt(playNumber),
+        gameNumber: gameNumbers[0],
+        skippedCards: skippedCards.map(formatCard)
+      });
+    }
+    
+    // Process all games in this play continuously
+    for (const gameNumber of gameNumbers) {
+      let bankerWins = 0, playerWins = 0, tieWins = 0;
+      let bankerPairs = 0, playerPairs = 0;
+      const handsForAnalysis = [];
+      
+      // Play hands using the continuous deck
+      for (let hand = 1; hand <= handsPerGame; hand++) {
+        // Reshuffle if deck is running low, maintaining continuity
+        if (continuousDeck.length < 20) {
+          const remainingCards = [...continuousDeck];
+          continuousDeck = shuffleDeck(createDeck(deckCount));
+          // In continuous mode, we don't lose the remaining cards
+          // This simulates real casino behavior where remaining cards would be kept
+        }
+        
+        const handResult = playBaccaratHand(continuousDeck);
+        continuousDeck = handResult.remainingDeck;
+        
+        // Count results
+        if (handResult.result === 'Banker') bankerWins++;
+        else if (handResult.result === 'Player') playerWins++;
+        else tieWins++;
+        
+        // Count pairs
+        if (hasPair(handResult.bankerCards)) bankerPairs++;
+        if (hasPair(handResult.playerCards)) playerPairs++;
+        
+        // Store hand data for analysis
+        handsForAnalysis.push({
+          handNumber: hand,
+          result: handResult.result,
+          playerTotal: handResult.playerTotal,
+          bankerTotal: handResult.bankerTotal,
+          playerCards: handResult.playerCards,
+          bankerCards: handResult.bankerCards,
+          bankerPair: hasPair(handResult.bankerCards),
+          playerPair: hasPair(handResult.playerCards)
+        });
+      }
+      
+      const gameResult = {
+        playNumber: parseInt(playNumber),
+        gameNumber,
+        totalHands: handsPerGame,
+        bankerWins,
+        playerWins,
+        tieWins,
+        bankerPairs,
+        playerPairs,
+        handsForAnalysis: handsForAnalysis
+      };
+      
+      results.push(gameResult);
+    }
+    
+    // Compute consecutive wins analysis for this play (all games combined)
+    const allHandsInPlay = [];
+    results.filter(r => r.playNumber === parseInt(playNumber)).forEach(game => {
+      if (game.handsForAnalysis) {
+        allHandsInPlay.push(...game.handsForAnalysis);
+      }
+    });
+    
+    // Add consecutive wins analysis to each game in this play
+    if (allHandsInPlay.length > 0) {
+      const consecutiveWins = computeConsecutiveWinsAnalysis(allHandsInPlay);
+      results.forEach(game => {
+        if (game.playNumber === parseInt(playNumber)) {
+          game.consecutiveWins = consecutiveWins;
+        }
+      });
+    }
+  }
+  
+  return results;
+}
+
 // MEGA-optimized worker function for very large simulations
 function simulateGameBatchMegaOptimized(workload, handsPerGame, deckCount, skipCard = 0) {
   const results = [];
@@ -372,16 +489,24 @@ function simulateGameBatchMegaOptimized(workload, handsPerGame, deckCount, skipC
 
 // Main worker execution
 try {
-  const { workload, playNumber, gameNumbers, handsPerGame, deckCount, skipCard, optimizedMode, megaOptimizedMode, inMemoryMode } = workerData;
+  const { workload, playNumber, gameNumbers, handsPerGame, deckCount, skipCard, optimizedMode, megaOptimizedMode, inMemoryMode, isContinuousMode } = workerData;
   
   let results;
   
   if ((megaOptimizedMode || inMemoryMode) && workload) {
-    // MEGA/Ultra-fast optimization: pre-compute everything locally, return only final stats
-    const modeText = inMemoryMode ? 'ULTRA-FAST in-memory' : 'MEGA-optimized';
-    console.log(`Worker running in ${modeText} mode for ${workload.length} games`);
-    results = simulateGameBatchMegaOptimized(workload, handsPerGame, deckCount, skipCard);
-    parentPort.postMessage({ success: true, megaData: results });
+    if (isContinuousMode) {
+      // Continuous mode: games are connected within each play
+      const modeText = inMemoryMode ? 'ULTRA-FAST in-memory (continuous)' : 'MEGA-optimized (continuous)';
+      console.log(`Worker running in ${modeText} mode for ${workload.length} games`);
+      results = simulateGameBatchContinuous(workload, handsPerGame, deckCount, skipCard);
+      parentPort.postMessage({ success: true, megaData: results });
+    } else {
+      // Standard mega/ultra-fast optimization: pre-compute everything locally, return only final stats
+      const modeText = inMemoryMode ? 'ULTRA-FAST in-memory' : 'MEGA-optimized';
+      console.log(`Worker running in ${modeText} mode for ${workload.length} games`);
+      results = simulateGameBatchMegaOptimized(workload, handsPerGame, deckCount, skipCard);
+      parentPort.postMessage({ success: true, megaData: results });
+    }
   } else if (optimizedMode && workload) {
     // Standard optimization: minimal memory usage
     console.log(`Worker running in optimized mode for ${workload.length} games`);

@@ -263,6 +263,56 @@ const MatchingData = ({
   );
 };
 
+// Helper function to process road grid into chart data format
+const processRoadGridToChartData = (roadGrid) => {
+  // Count consecutive wins by column
+  const columnCounts = { 莊: {}, 閑: {} };
+  const columns = {};
+
+  // Group results by column
+  roadGrid.forEach((item) => {
+    if (!columns[item.column]) {
+      columns[item.column] = [];
+    }
+    columns[item.column].push(item);
+  });
+
+  // Count consecutive wins in each column
+  Object.values(columns).forEach((column) => {
+    if (column.length > 0) {
+      const columnType = column[0].outcome;
+      const columnLength = column.length;
+
+      if (!columnCounts[columnType][columnLength]) {
+        columnCounts[columnType][columnLength] = 0;
+      }
+      columnCounts[columnType][columnLength]++;
+    }
+  });
+
+  // Convert to chart data format
+  const chartData = [];
+  const maxStreak = Math.max(
+    Math.max(...Object.keys(columnCounts["莊"]).map(Number), 0),
+    Math.max(...Object.keys(columnCounts["閑"]).map(Number), 0)
+  );
+
+  for (let i = 1; i <= Math.max(maxStreak, 5); i++) {
+    chartData.push({
+      x: i,
+      y: columnCounts["莊"][i] || 0,
+      type: "莊",
+    });
+    chartData.push({
+      x: i,
+      y: columnCounts["閑"][i] || 0,
+      type: "閑",
+    });
+  }
+
+  return chartData;
+};
+
 // Function to analyze consecutive wins from API data (optimized for API response)
 const analyzeConsecutiveWinsFromAPI = (apiResponseData) => {
   // Check if we have pre-calculated consecutive analysis (from embedded server)
@@ -308,6 +358,34 @@ const analyzeConsecutiveWinsFromAPI = (apiResponseData) => {
     }
     
     return chartData;
+  }
+  
+  // Check if we have games with handsForAnalysis (from continuous/in-memory mode)
+  if (apiResponseData && apiResponseData.games && 
+      apiResponseData.games.some(game => game.handsForAnalysis)) {
+    console.log('🔄 Processing continuous/in-memory mode games data for consecutive analysis');
+    
+    // Convert handsForAnalysis format to display format
+    const convertedResults = [];
+    let handId = 1;
+    
+    apiResponseData.games.forEach((game) => {
+      if (game.handsForAnalysis && Array.isArray(game.handsForAnalysis)) {
+        game.handsForAnalysis.forEach((hand) => {
+          convertedResults.push({
+            id: handId++,
+            outcome: hand.result === "Player" ? "閑" : hand.result === "Banker" ? "莊" : "和",
+            type: hand.result.toLowerCase(),
+          });
+        });
+      }
+    });
+    
+    if (convertedResults.length > 0) {
+      // Use the same Big Road analysis as the fallback
+      const roadGrid = convertToroadtwo(convertedResults);
+      return processRoadGridToChartData(roadGrid);
+    }
   }
   
   // Fallback: Check if we have raw games data (from original server)
@@ -383,50 +461,8 @@ const analyzeConsecutiveWinsFromAPI = (apiResponseData) => {
   const displayResults = convertGameResults(apiResponseData);
   const roadtwoGrid = convertToroadtwo(displayResults);
 
-  // Count consecutive wins by column
-  const columnCounts = { 莊: {}, 閑: {} };
-  const columns = {};
-
-  roadtwoGrid.forEach((item) => {
-    if (!columns[item.column]) {
-      columns[item.column] = [];
-    }
-    columns[item.column].push(item);
-  });
-
-  Object.values(columns).forEach((column) => {
-    if (column.length > 0) {
-      const columnType = column[0].outcome;
-      const columnLength = column.length;
-
-      if (!columnCounts[columnType][columnLength]) {
-        columnCounts[columnType][columnLength] = 0;
-      }
-      columnCounts[columnType][columnLength]++;
-    }
-  });
-
-  // Convert to chart data format
-  const chartData = [];
-  const maxStreak = Math.max(
-    Math.max(...Object.keys(columnCounts["莊"]).map(Number), 0),
-    Math.max(...Object.keys(columnCounts["閑"]).map(Number), 0)
-  );
-
-  for (let i = 1; i <= Math.max(maxStreak, 5); i++) {
-    chartData.push({
-      x: i,
-      y: columnCounts["莊"][i] || 0,
-      type: "莊",
-    });
-    chartData.push({
-      x: i,
-      y: columnCounts["閑"][i] || 0,
-      type: "閑",
-    });
-  }
-
-  return chartData;
+  // Use the helper function to process road grid
+  return processRoadGridToChartData(roadtwoGrid);
 };
 
 // Lazy loading MatchingData component
@@ -450,9 +486,24 @@ const MatchingDataLazy = ({
         return;
       }
 
+      // Check if we already have pre-computed consecutive data (for in-memory/continuous mode)
+      if (gameResults && gameResults.consecutiveWinsData) {
+        addLog(`📊 Using pre-computed consecutive wins analysis for play ${playNumber} (in-memory mode)`);
+        
+        // Cache the pre-computed result
+        setConsecutiveWinsCache(prev => ({
+          ...prev,
+          [cacheKey]: gameResults.consecutiveWinsData
+        }));
+        
+        setMatchingData(gameResults.consecutiveWinsData);
+        return;
+      }
+
+      // Fallback: Load consecutive analysis data from API (for database mode)
       setLoading(true);
       try {
-        addLog(`📊 Loading consecutive wins analysis for play ${playNumber}...`);
+        addLog(`📊 Loading consecutive wins analysis from API for play ${playNumber}...`);
         
         // Load consecutive analysis data from API
         const analysisData = await BaccaratAPI.getPlayConsecutiveAnalysis(simulationId, playNumber, addLog);
@@ -467,11 +518,17 @@ const MatchingDataLazy = ({
         }));
         
         setMatchingData(consecutiveWinsData);
-        addLog(`✅ Consecutive wins analysis loaded for play ${playNumber}`);
+        addLog(`✅ Consecutive wins analysis loaded from API for play ${playNumber}`);
         
       } catch (error) {
         console.error('Error loading consecutive wins data:', error);
         addLog(`❌ Error loading consecutive wins data: ${error.message}`);
+        // Try to generate data from gameResults if available
+        if (gameResults && gameResults.games) {
+          addLog(`🔄 Falling back to client-side analysis from game results...`);
+          const consecutiveWinsData = analyzeConsecutiveWinsFromAPI(gameResults);
+          setMatchingData(consecutiveWinsData);
+        }
       } finally {
         setLoading(false);
       }
@@ -480,7 +537,7 @@ const MatchingDataLazy = ({
     if (simulationId && playNumber) {
       loadConsecutiveWinsData();
     }
-  }, [simulationId, playNumber, consecutiveWinsCache, setConsecutiveWinsCache, addLog]);
+  }, [simulationId, playNumber, gameResults, consecutiveWinsCache, setConsecutiveWinsCache, addLog]);
 
   return (
     <MatchingData 

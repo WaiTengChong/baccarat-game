@@ -1,4 +1,4 @@
-import { Button, Card, Flex, Space, Splitter, Table } from "antd";
+import { Button, Card, Flex, Splitter, Table } from "antd";
 import React, { useContext, useState } from "react";
 import { cardImages } from "../components/CardImages";
 import BaccaratAPI from "../services/api";
@@ -283,30 +283,31 @@ const View = ({
       dataIndex: "playerPair",
       key: "playerPair",
     },
-    {
-      title: "Action",
-      key: "action",
-      render: (_, record) => (
-        <Space size="middle">
-          <a
-            onClick={() =>
-              onViewGameDetail({
-                gameNumber: record.gameNumber,
-                gameId: record.gameId,
-                totalHands: record.rawData?.totalHands || record.totalHands,
-                bankerWins: record.rawData?.bankerWins || 0,
-                playerWins: record.rawData?.playerWins || 0,
-                tieWins: record.rawData?.tieWins || 0,
-                bankerPairs: record.rawData?.bankerPairs || 0,
-                playerPairs: record.rawData?.playerPairs || 0,
-              })
-            }
-          >
-            查看
-          </a>
-        </Space>
-      ),
-    },
+    // disable action button for now
+    // {
+    //   title: "Action",
+    //   key: "action",
+    //   render: (_, record) => (
+    //     <Space size="middle">
+    //       <a
+    //         onClick={() =>
+    //           onViewGameDetail({
+    //             gameNumber: record.gameNumber,
+    //             gameId: record.gameId,
+    //             totalHands: record.rawData?.totalHands || record.totalHands,
+    //             bankerWins: record.rawData?.bankerWins || 0,
+    //             playerWins: record.rawData?.playerWins || 0,
+    //             tieWins: record.rawData?.tieWins || 0,
+    //             bankerPairs: record.rawData?.bankerPairs || 0,
+    //             playerPairs: record.rawData?.playerPairs || 0,
+    //           })
+    //         }
+    //       >
+    //         查看
+    //       </a>
+    //     </Space>
+    //   ),
+    // },
   ];
   // Table View with optimized pre-computed data (no frontend processing!)
   if (showTableView && tableViewData) {
@@ -327,7 +328,7 @@ const View = ({
               第{tableViewData.playNumber}局 - 遊戲統計 一共 {totalRows}局
               {simulationSettings && (
                 <span style={{ fontSize: '0.9em', color: '#666', fontWeight: 'normal' }}>
-                  {' '}({simulationSettings.deckCount}SHOE {simulationSettings.gamesPerPlay}局 {simulationSettings.handsPerGame}手 飛牌數 {simulationSettings.skipCard})
+                  {' '}({simulationSettings.deckCount}SHOE {simulationSettings.gamesPerPlay}局 {simulationSettings.handsPerGame}手 飛牌數 {simulationSettings.skipCard} {simulationSettings.isContinuousMode ? '連貫模式' : '標準模式'})
                 </span>
               )}
               {pagination.totalPages > 1 &&

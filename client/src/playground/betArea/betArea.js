@@ -44,6 +44,7 @@ const BetArea = ({ onGameStart, onResetGame }) => {
   const { addLog, clearLogs } = useContext(LogContext);
   const [skipCard, setSkipCard] = useState(10);
   const [useInMemory, setUseInMemory] = useState(true); // Default to ultra-fast mode
+  const [isContinuousMode, setIsContinuousMode] = useState(false); // New continuous mode toggle
 
   const handlePlay = async () => {
     console.log('Starting game with:', {
@@ -52,11 +53,13 @@ const BetArea = ({ onGameStart, onResetGame }) => {
       handsPerGame,
       deckCount,
       skipCard,
-      useInMemory
+      useInMemory,
+      isContinuousMode
     });
 
     clearLogs();
-    addLog(`運行 ${plays}, 局數 ${gamesPerPlay}, 手 ${handsPerGame}, 飛牌數 ${skipCard}, ${useInMemory ? '超快記憶體模式' : '資料庫模式'}`);
+    const modeDescription = isContinuousMode ? '連貫模式 (無手數限制)' : '標準模式';
+    addLog(`運行 ${plays}, 局數 ${gamesPerPlay}, 手 ${handsPerGame}, 飛牌數 ${skipCard}, ${useInMemory ? '超快記憶體模式' : '資料庫模式'}, ${modeDescription}`);
     
     setIsPlaying(true);
     setProgress(0);
@@ -65,7 +68,8 @@ const BetArea = ({ onGameStart, onResetGame }) => {
     try {
       // Start simulation on backend with logging - now returns complete data
       const modeText = useInMemory ? 'ultra-fast in-memory mode' : 'database mode';
-      addLog(`🚀 Starting simulation in ${modeText}: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks, skip ${skipCard} cards`);
+      const continuousText = isContinuousMode ? ' (continuous)' : '';
+      addLog(`🚀 Starting simulation in ${modeText}${continuousText}: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks, skip ${skipCard} cards`);
       setSimulationStatus('Running simulation...');
       setProgress(50); // Show some progress
       
@@ -76,6 +80,7 @@ const BetArea = ({ onGameStart, onResetGame }) => {
         deckCount,
         skipCard,
         useInMemory, // Pass the in-memory flag
+        isContinuousMode, // Pass the continuous mode flag
         addLog  // Pass the logger
       );
       
@@ -112,7 +117,8 @@ const BetArea = ({ onGameStart, onResetGame }) => {
           gameTotal + (game.totalHands || 0), 0), 0);
       
       const optimizationText = response.optimizationLevel === 'ultra-fast' ? 'ULTRA-FAST (no database)' : response.optimizationLevel;
-      addLog(`✅ Simulation completed with ${frontendResults.length} plays and ${totalHands} total hands using ${optimizationText} mode`);
+      const continuousModeText = response.isContinuousMode ? ' (連貫模式)' : '';
+      addLog(`✅ Simulation completed with ${frontendResults.length} plays and ${totalHands} total hands using ${optimizationText} mode${continuousModeText}`);
       
       // Extract timing information from API response
       const timingInfo = response.timing || null;
@@ -126,7 +132,8 @@ const BetArea = ({ onGameStart, onResetGame }) => {
         gamesPerPlay,
         handsPerGame,
         skipCard,
-        useInMemory
+        useInMemory,
+        isContinuousMode
       });
       
     } catch (error) {
@@ -239,6 +246,34 @@ const BetArea = ({ onGameStart, onResetGame }) => {
               }}
             >
               {useInMemory ? "超快記憶體" : "資料庫儲存"}
+            </Text>
+          </div>
+        </div>
+
+        <div className="control-group">
+          <Text className="control-label">遊戲模式:</Text>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+            }}
+          >
+            <Switch
+              checked={isContinuousMode}
+              onChange={(checked) => setIsContinuousMode(checked)}
+              disabled={isPlaying}
+              checkedChildren="🔗"
+              unCheckedChildren="🎯"
+            />
+            <Text
+              style={{
+                fontSize: "10px",
+                marginTop: "4px",
+                textAlign: "center",
+              }}
+            >
+              {isContinuousMode ? "連貫模式" : "標準模式"}
             </Text>
           </div>
         </div>

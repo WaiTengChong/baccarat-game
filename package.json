@@ -19,7 +19,9 @@
     "build-win": "electron-builder --win", 
     "build-linux": "electron-builder --linux",
     "pack": "yarn prebuild && yarn build-mac",
-    "pack-large": "yarn prebuild && yarn build-mac"
+    "pack-large": "yarn prebuild && yarn build-mac",
+    "pack-win": "yarn prebuild && yarn build-win",
+    "pack-linux": "yarn prebuild && yarn build-linux"
   },
   "dependencies": {
     "express": "^4.18.2",

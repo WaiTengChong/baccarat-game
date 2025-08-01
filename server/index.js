@@ -323,7 +323,7 @@ app.get('/api/health', (req, res) => {
 // Start a new simulation (ultra-optimized for large datasets)
 app.post('/api/simulations', async (req, res) => {
   try {
-    const { plays, gamesPerPlay, handsPerGame, deckCount = 8, skipCard = 0, useInMemory = true } = req.body;
+    const { plays, gamesPerPlay, handsPerGame, deckCount = 8, skipCard = 0, useInMemory = true, isContinuousMode = false } = req.body;
     
     if (!plays || !gamesPerPlay || !handsPerGame) {
       return res.status(400).json({ error: 'Missing required parameters' });
@@ -338,9 +338,10 @@ app.post('/api/simulations', async (req, res) => {
     
     if (useInMemory) {
       // ULTRA-FAST: Pure in-memory computation with no database operations
-      console.log(`⚡ Using ULTRA-FAST in-memory mode for ${totalGames} games (no database)`);
+      const modeDescription = isContinuousMode ? ' (continuous)' : '';
+      console.log(`⚡ Using ULTRA-FAST in-memory mode${modeDescription} for ${totalGames} games (no database)`);
       optimizationLevel = 'ultra-fast';
-      summaryData = await runSimulationInMemory(simulationId, plays, gamesPerPlay, handsPerGame, deckCount, skipCard);
+      summaryData = await runSimulationInMemory(simulationId, plays, gamesPerPlay, handsPerGame, deckCount, skipCard, isContinuousMode);
     } else {
       // Check if database is ready for database-backed modes
       if (!db) {
@@ -377,7 +378,8 @@ app.post('/api/simulations', async (req, res) => {
       results: summaryData,
       totalGames,
       optimizationLevel: optimizationLevel,
-      timing: summaryData.timing // Include timing information if available
+      timing: summaryData.timing, // Include timing information if available
+      isContinuousMode: isContinuousMode // Include continuous mode flag
     });
   } catch (error) {
     console.error('Simulation start error:', error);
@@ -901,7 +903,7 @@ async function runSimulationMegaOptimized(simulationId, plays, gamesPerPlay, han
 }
 
 // ULTRA-FAST in-memory simulation (no database storage)
-async function runSimulationInMemory(simulationId, plays, gamesPerPlay, handsPerGame, deckCount, skipCard = 0) {
+async function runSimulationInMemory(simulationId, plays, gamesPerPlay, handsPerGame, deckCount, skipCard = 0, isContinuousMode = false) {
   const totalGames = plays * gamesPerPlay;
   const totalHands = totalGames * handsPerGame;
   const startTime = Date.now();
@@ -924,7 +926,8 @@ async function runSimulationInMemory(simulationId, plays, gamesPerPlay, handsPer
             deckCount,
             skipCard,
             megaOptimizedMode: true, // Use mega mode for speed
-            inMemoryMode: true // Flag for pure in-memory processing
+            inMemoryMode: true, // Flag for pure in-memory processing
+            isContinuousMode: isContinuousMode // Flag for continuous mode
           }
         });
         

@@ -2,11 +2,12 @@ const API_BASE_URL = 'http://localhost:3001/api';
 
 class BaccaratAPI {
   // Start a new simulation (now returns summary data only)
-  static async startSimulation(plays, gamesPerPlay, handsPerGame, deckCount = 8, skipCard = 0, useInMemory = true, logger = null) {
+  static async startSimulation(plays, gamesPerPlay, handsPerGame, deckCount = 8, skipCard = 0, useInMemory = true, isContinuousMode = false, logger = null) {
     try {
       const modeText = useInMemory ? 'ultra-fast in-memory' : 'database-backed';
+      const continuousText = isContinuousMode ? ' (continuous)' : '';
       if (logger) {
-        logger(`🚀 Starting ${modeText} simulation: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks, skip ${skipCard} cards`);
+        logger(`🚀 Starting ${modeText}${continuousText} simulation: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks, skip ${skipCard} cards`);
         logger(`📡 Sending request to ${API_BASE_URL}/simulations`);
       }
 
@@ -16,7 +17,8 @@ class BaccaratAPI {
         handsPerGame,
         deckCount,
         skipCard,
-        useInMemory
+        useInMemory,
+        isContinuousMode
       };
       
       const response = await fetch(`${API_BASE_URL}/simulations`, {
