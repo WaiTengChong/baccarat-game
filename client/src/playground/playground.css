@@ -125,6 +125,25 @@
   width: 100%;
 }
 
+.no-hands-message {
+  text-align: center;
+  padding: 40px 20px;
+  background: #f9f9f9;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  color: #666;
+  font-style: italic;
+  grid-column: 1 / -1; /* Span all columns */
+}
+
+.no-hands-message p {
+  margin: 0 0 8px 0;
+}
+
+.no-hands-message p:last-child {
+  margin-bottom: 0;
+}
+
 .hand-detail {
   background: #fafafa;
   border: 1px solid #e8e8e8;
