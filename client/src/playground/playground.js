@@ -1,5 +1,5 @@
 import { Button, Card, Flex, Space, Splitter, Table } from "antd";
-import React, { useContext, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { cardImages } from "../components/CardImages";
 import BaccaratAPI from "../services/api";
 import { LogContext } from "../Terminal/LongContext";
@@ -10,8 +10,98 @@ import MatchingData, { MatchingDataLazy } from "./matchingData/matchingData";
 import PlayCard from "./playCard/playCard";
 import "./playground.css";
 
-// Helper function to get card image path
+// Debug component to help troubleshoot card loading issues
+const CardDebugInfo = () => {
+  const [showDebug, setShowDebug] = useState(false);
+  
+  useEffect(() => {
+    // Log platform info for debugging
+    console.log('Platform debug info:', {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      cardImagesCount: Object.keys(cardImages).length,
+      sampleCardPaths: {
+        AS: cardImages.AS ? 'loaded' : 'missing',
+        KH: cardImages.KH ? 'loaded' : 'missing',
+        QD: cardImages.QD ? 'loaded' : 'missing'
+      }
+    });
+  }, []);
+  
+  if (!showDebug) {
+    return (
+      <button 
+        onClick={() => setShowDebug(true)}
+        style={{ 
+          position: 'fixed', 
+          top: '10px', 
+          right: '10px', 
+          zIndex: 1000,
+          backgroundColor: '#ff4d4f',
+          color: 'white',
+          border: 'none',
+          padding: '5px 10px',
+          borderRadius: '4px',
+          fontSize: '12px'
+        }}
+      >
+        Card Debug
+      </button>
+    );
+  }
+  
+  const loadedCards = Object.entries(cardImages).filter(([key, value]) => value);
+  const missingCards = Object.entries(cardImages).filter(([key, value]) => !value);
+  
+  return (
+    <div style={{ 
+      position: 'fixed', 
+      top: '10px', 
+      right: '10px', 
+      backgroundColor: 'white',
+      border: '1px solid #ccc',
+      padding: '10px',
+      borderRadius: '4px',
+      maxWidth: '300px',
+      maxHeight: '400px',
+      overflow: 'auto',
+      zIndex: 1000,
+      fontSize: '12px'
+    }}>
+      <div style={{ marginBottom: '10px' }}>
+        <button onClick={() => setShowDebug(false)} style={{ float: 'right' }}>×</button>
+        <h4>Card Loading Debug</h4>
+      </div>
+      <div>
+        <strong>Platform:</strong> {navigator.platform}<br/>
+        <strong>Total Cards:</strong> {Object.keys(cardImages).length}<br/>
+        <strong>Loaded:</strong> {loadedCards.length}<br/>
+        <strong>Missing:</strong> {missingCards.length}<br/>
+      </div>
+      {missingCards.length > 0 && (
+        <div style={{ marginTop: '10px' }}>
+          <strong>Missing Cards:</strong><br/>
+          {missingCards.slice(0, 10).map(([key]) => key).join(', ')}
+          {missingCards.length > 10 && '...'}
+        </div>
+      )}
+      <div style={{ marginTop: '10px' }}>
+        <strong>Sample Paths:</strong><br/>
+        {loadedCards.slice(0, 3).map(([key, path]) => (
+          <div key={key}>{key}: {typeof path === 'string' ? path.substring(0, 30) + '...' : typeof path}</div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Helper function to get card image path with error handling
 const getCardImagePath = (card) => {
+  if (!card || !card.value || !card.suit) {
+    console.warn('Invalid card object:', card);
+    return null;
+  }
+
   // Convert 10 to T for filename
   const value = card.value === "10" ? "T" : card.value;
 
@@ -26,7 +116,14 @@ const getCardImagePath = (card) => {
   const suit = suitMapping[card.suit] || card.suit;
   const cardKey = `${value}${suit}`;
 
-  return cardImages[cardKey];
+  const imagePath = cardImages[cardKey];
+  
+  if (!imagePath) {
+    console.warn(`Card image not found for: ${cardKey} (${card.value}${card.suit})`);
+    console.log('Available card images:', Object.keys(cardImages).filter(key => cardImages[key]));
+  }
+
+  return imagePath;
 };
 
 // Function to analyze consecutive wins from game results using Big Road logic
@@ -552,7 +649,7 @@ const View = ({
           <RoadTwo gameResults={roadComponentData} />
           <RoadOne gameResults={roadComponentData} />
 
-          <div className="hands-list">
+          {/* <div className="hands-list">
             {detailedViewData.hands && detailedViewData.hands.length > 0 ? (
               detailedViewData.hands.map((hand) => {
                 // Check for banker pair
@@ -597,8 +694,21 @@ const View = ({
                                 src={imagePath}
                                 alt={`${card.value}${card.suit}`}
                                 className="card-image"
+                                onError={(e) => {
+                                  console.error(`Failed to load card image: ${imagePath}`);
+                                  e.target.style.display = 'none';
+                                  // Show text fallback
+                                  const textSpan = document.createElement('span');
+                                  textSpan.textContent = `${card.value}${card.suit}`;
+                                  textSpan.className = 'card-text-fallback';
+                                  e.target.parentNode.appendChild(textSpan);
+                                }}
                               />
-                            ) : null;
+                            ) : (
+                              <span key={index} className="card-text-fallback">
+                                {card.value}{card.suit}
+                              </span>
+                            );
                           })}
                         </div>
                       </div>
@@ -615,8 +725,21 @@ const View = ({
                                 src={imagePath}
                                 alt={`${card.value}${card.suit}`}
                                 className="card-image"
+                                onError={(e) => {
+                                  console.error(`Failed to load card image: ${imagePath}`);
+                                  e.target.style.display = 'none';
+                                  // Show text fallback
+                                  const textSpan = document.createElement('span');
+                                  textSpan.textContent = `${card.value}${card.suit}`;
+                                  textSpan.className = 'card-text-fallback';
+                                  e.target.parentNode.appendChild(textSpan);
+                                }}
                               />
-                            ) : null;
+                            ) : (
+                              <span key={index} className="card-text-fallback">
+                                {card.value}{card.suit}
+                              </span>
+                            );
                           })}
                         </div>
                       </div>
@@ -630,11 +753,7 @@ const View = ({
                 <p>Road maps show summary based on available game data.</p>
               </div>
             )}
-          </div>
-          <MatchingData
-            matchingData={currentPlayConsecutiveWinsData}
-            gameResults={currentPlayData || detailedViewData}
-          />
+          </div> */}
         </div>
       </div>
     );
@@ -1108,32 +1227,35 @@ const Playground = () => {
   };
 
   return (
-    <Splitter layout="vertical" className="playground-container">
-      <Splitter.Panel>
-        <View
-          gameResults={gameResults}
-          playCardsData={playCardsData}
-          onCardClick={handleCardClick}
-          showTableView={showTableView}
-          showDetailedView={showDetailedView}
-          tableViewData={tableViewData}
-          detailedViewData={detailedViewData}
-          onBackToPlays={handleBackToPlays}
-          onBackToTable={handleBackToTable}
-          onViewGameDetail={handleViewGameDetail}
-          simulationId={simulationId}
-          consecutiveWinsCache={consecutiveWinsCache}
-          setConsecutiveWinsCache={setConsecutiveWinsCache}
-          addLog={addLog}
-          setTableViewData={setTableViewData}
-          convertBackendCardsArray={convertBackendCardsArray}
-          simulationSettings={simulationSettings}
-        />
-      </Splitter.Panel>
-      <Splitter.Panel max="20%" min="10%" defaultSize="20%">
-        <BetArea onGameStart={handleGameStart} onResetGame={handleResetGame} />
-      </Splitter.Panel>
-    </Splitter>
+    <div>
+      <CardDebugInfo />
+      <Splitter layout="vertical" className="playground-container">
+        <Splitter.Panel>
+          <View
+            gameResults={gameResults}
+            playCardsData={playCardsData}
+            onCardClick={handleCardClick}
+            showTableView={showTableView}
+            showDetailedView={showDetailedView}
+            tableViewData={tableViewData}
+            detailedViewData={detailedViewData}
+            onBackToPlays={handleBackToPlays}
+            onBackToTable={handleBackToTable}
+            onViewGameDetail={handleViewGameDetail}
+            simulationId={simulationId}
+            consecutiveWinsCache={consecutiveWinsCache}
+            setConsecutiveWinsCache={setConsecutiveWinsCache}
+            addLog={addLog}
+            setTableViewData={setTableViewData}
+            convertBackendCardsArray={convertBackendCardsArray}
+            simulationSettings={simulationSettings}
+          />
+        </Splitter.Panel>
+        <Splitter.Panel max="20%" min="10%" defaultSize="20%">
+          <BetArea onGameStart={handleGameStart} onResetGame={handleResetGame} />
+        </Splitter.Panel>
+      </Splitter>
+    </div>
   );
 };
 

@@ -254,6 +254,29 @@
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
+/* Text fallback for cards when images fail to load */
+.card-text-fallback {
+  display: inline-block;
+  width: 70px;
+  height: 98px;
+  margin: 2px;
+  border: 2px solid #d9d9d9;
+  border-radius: 6px;
+  background-color: white;
+  text-align: center;
+  line-height: 98px;
+  font-size: 14px;
+  font-weight: bold;
+  color: #333;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease;
+}
+
+.card-text-fallback:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
 .total {
   font-weight: bold;
   color: #1890ff;
@@ -264,6 +287,13 @@
   .card-image {
     width: 80px;
     height: 112px;
+  }
+  
+  .card-text-fallback {
+    width: 80px;
+    height: 112px;
+    line-height: 112px;
+    font-size: 16px;
   }
 }
 
@@ -290,6 +320,13 @@
   .card-image {
     width: 45px !important;
     height: 63px !important;
+  }
+  
+  .card-text-fallback {
+    width: 45px !important;
+    height: 63px !important;
+    line-height: 63px !important;
+    font-size: 10px !important;
   }
   
   .cards-images {
