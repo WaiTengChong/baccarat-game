@@ -649,7 +649,7 @@ const View = ({
           <RoadTwo gameResults={roadComponentData} />
           <RoadOne gameResults={roadComponentData} />
 
-          {/* <div className="hands-list">
+          <div className="hands-list">
             {detailedViewData.hands && detailedViewData.hands.length > 0 ? (
               detailedViewData.hands.map((hand) => {
                 // Check for banker pair
@@ -753,7 +753,7 @@ const View = ({
                 <p>Road maps show summary based on available game data.</p>
               </div>
             )}
-          </div> */}
+          </div>
         </div>
       </div>
     );
