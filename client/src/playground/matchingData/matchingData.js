@@ -35,42 +35,43 @@ const SkippedCardsDisplay = ({ gameResults }) => {
     }
   }
 
-  if (allSkippedCards.length === 0) {
-    return (
-      <Card style={{ marginBottom: 16 }} title="飛牌記錄">
-        <div style={{ textAlign: 'center', color: '#999', padding: '20px' }}>
-          此次模擬未使用飛牌功能
-        </div>
-      </Card>
-    );
-  }
+  // if (allSkippedCards.length === 0) {
+  //   return (
+  //     <Card style={{ marginBottom: 16 }} title="飛牌記錄">
+  //       <div style={{ textAlign: 'center', color: '#999', padding: '20px' }}>
+  //         此次模擬未使用飛牌功能
+  //       </div>
+  //     </Card>
+  //   );
+  // }
 
-  return (
-    <Card style={{ marginBottom: 16 }} title="飛牌記錄">
-      <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-        {allSkippedCards.map((item, index) => (
-          <div key={index} style={{ 
-            marginBottom: '8px', 
-            padding: '8px', 
-            backgroundColor: '#f5f5f5', 
-            borderRadius: '4px',
-            fontSize: '12px'
-          }}>
-            <strong>第{item.playNumber}局 第{item.gameNumber}遊戲:</strong>
-            <div style={{ marginTop: '4px', color: '#666' }}>
-              {item.skippedCards.join(', ')}
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
+  // return (
+  //   <Card style={{ marginBottom: 16 }} title="飛牌記錄">
+  //     <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+  //       {allSkippedCards.map((item, index) => (
+  //         <div key={index} style={{ 
+  //           marginBottom: '8px', 
+  //           padding: '8px', 
+  //           backgroundColor: '#f5f5f5', 
+  //           borderRadius: '4px',
+  //           fontSize: '12px'
+  //         }}>
+  //           <strong>第{item.playNumber}局 第{item.gameNumber}遊戲:</strong>
+  //           <div style={{ marginTop: '4px', color: '#666' }}>
+  //             {item.skippedCards.join(', ')}
+  //           </div>
+  //         </div>
+  //       ))}
+  //     </div>
+  //   </Card>
+  // );
 };
 
 const MatchingData = ({
   matchingData,
   loading,
   gameResults,
+  betweenCounts: betweenCountsProp,
 }) => {
   const { styles } = useStyles();
   
@@ -256,6 +257,161 @@ const MatchingData = ({
             </tbody>
           </table>
         </div>
+
+        {/* New: Between-counts table (Road Two style: counts of X between single Y, excluding trailing open segment) */}
+        {(() => {
+          // Helper: extract chronological outcome sequence (0 = 莊/Banker, 1 = 閑/Player) ignoring ties
+          const extractOutcomeSequence = (results) => {
+            const sequence = [];
+            if (!results) return sequence;
+
+            // Case 1: single game object with hands
+            if (results.hands && Array.isArray(results.hands)) {
+              results.hands.forEach((hand) => {
+                if (!hand || !hand.result) return;
+                if (hand.result === 'Banker') sequence.push(0);
+                else if (hand.result === 'Player') sequence.push(1);
+              });
+              return sequence;
+            }
+
+            // Case 2: play object with games (optional hands)
+            if (results.games && Array.isArray(results.games)) {
+              // Sort games by gameNumber if present to ensure order
+              const games = [...results.games].sort((a, b) => (a.gameNumber || 0) - (b.gameNumber || 0));
+              games.forEach((game) => {
+                if (!game || !Array.isArray(game.hands)) return;
+                // Sort hands by handNumber if present
+                const hands = [...game.hands].sort((a, b) => (a.handNumber || 0) - (b.handNumber || 0));
+                hands.forEach((hand) => {
+                  if (!hand || !hand.result) return;
+                  if (hand.result === 'Banker') sequence.push(0);
+                  else if (hand.result === 'Player') sequence.push(1);
+                });
+              });
+              return sequence;
+            }
+
+            // Case 3: array of plays
+            if (Array.isArray(results)) {
+              results.forEach((play) => {
+                if (!play || !Array.isArray(play.games)) return;
+                const games = [...play.games].sort((a, b) => (a.gameNumber || 0) - (b.gameNumber || 0));
+                games.forEach((game) => {
+                  if (!game || !Array.isArray(game.hands)) return;
+                  const hands = [...game.hands].sort((a, b) => (a.handNumber || 0) - (b.handNumber || 0));
+                  hands.forEach((hand) => {
+                    if (!hand || !hand.result) return;
+                    if (hand.result === 'Banker') sequence.push(0);
+                    else if (hand.result === 'Player') sequence.push(1);
+                  });
+                });
+              });
+              return sequence;
+            }
+
+            return sequence;
+          };
+
+          // Helper: compute counts of patterns 0 1^k 0 (player between bankers) and 1 0^k 1 (banker between players)
+          const computeBetweenCounts = (seq) => {
+            const result = { banker: {}, player: {} };
+            if (!seq || seq.length === 0) return result;
+
+            // Build run-length encoding of the sequence
+            const runs = [];
+            let i = 0;
+            while (i < seq.length) {
+              const value = seq[i];
+              let j = i;
+              while (j < seq.length && seq[j] === value) j++;
+              runs.push({ value, length: j - i });
+              i = j;
+            }
+
+            // Exclude last open run ("the last one forever not count")
+            const lastIndex = runs.length - 1;
+            const effectiveEnd = Math.max(0, lastIndex - 1); // exclude final run by only iterating up to lastIndex-1 center runs
+
+            // NEW: also count the FIRST run at the start (as requested)
+            if (runs.length > 0) {
+              const first = runs[0];
+              if (first.value === 0) {
+                result.banker[first.length] = (result.banker[first.length] || 0) + 1;
+              } else if (first.value === 1) {
+                result.player[first.length] = (result.player[first.length] || 0) + 1;
+              }
+            }
+
+            for (let r = 1; r <= effectiveEnd; r++) {
+              // We look at triplets: runs[r-1], runs[r], runs[r+1]
+              const prev = runs[r - 1];
+              const curr = runs[r];
+              const next = runs[r + 1];
+              if (!prev || !curr || !next) continue;
+
+              // Count patterns bounded on both sides by the opposite value
+              // Player between bankers: 0 1^k 0
+              if (prev.value === 0 && curr.value === 1 && next.value === 0) {
+                const k = curr.length;
+                result.player[k] = (result.player[k] || 0) + 1;
+              }
+
+              // Banker between players: 1 0^k 1
+              if (prev.value === 1 && curr.value === 0 && next.value === 1) {
+                const k = curr.length;
+                result.banker[k] = (result.banker[k] || 0) + 1;
+              }
+            }
+
+            return result;
+          };
+
+          const seq = extractOutcomeSequence(gameResults);
+          const betweenCounts = betweenCountsProp || computeBetweenCounts(seq);
+          const playerKeys = Object.keys(betweenCounts.player).map(Number).sort((a, b) => a - b);
+          const bankerKeys = Object.keys(betweenCounts.banker).map(Number).sort((a, b) => a - b);
+          const hasBetweenData = playerKeys.length > 0 || bankerKeys.length > 0;
+
+          return (
+            <div className="consecutive-wins-table" style={{ marginTop: '16px' }}>
+              <div style={{ fontWeight: 600, marginBottom: 8 }}>夾中連續統計（Road Two 計數法）</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f5f5f5' }}>
+                    <th style={{ border: '1px solid #d9d9d9', padding: '8px', textAlign: 'center' }}>連續次數</th>
+                    <th style={{ border: '1px solid #d9d9d9', padding: '8px', textAlign: 'center', color: '#fa1414' }}>莊被夾 (0^k 於 1 之間)</th>
+                    <th style={{ border: '1px solid #d9d9d9', padding: '8px', textAlign: 'center', color: '#1890ff' }}>閑被夾 (1^k 於 0 之間)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hasBetweenData ? (
+                    (() => {
+                      const allK = Array.from(new Set([...playerKeys, ...bankerKeys])).sort((a, b) => a - b);
+                      return allK.map((k) => (
+                        <tr key={k}>
+                          <td style={{ border: '1px solid #d9d9d9', padding: '8px', textAlign: 'center' }}>{k}次</td>
+                          <td style={{ border: '1px solid #d9d9d9', padding: '8px', textAlign: 'center', color: betweenCounts.banker[k] ? '#fa1414' : '#999' }}>
+                            {betweenCounts.banker[k] ? `${betweenCounts.banker[k]}次` : '-'}
+                          </td>
+                          <td style={{ border: '1px solid #d9d9d9', padding: '8px', textAlign: 'center', color: betweenCounts.player[k] ? '#1890ff' : '#999' }}>
+                            {betweenCounts.player[k] ? `${betweenCounts.player[k]}次` : '-'}
+                          </td>
+                        </tr>
+                      ));
+                    })()
+                  ) : (
+                    <tr>
+                      <td colSpan="3" style={{ border: '1px solid #d9d9d9', padding: '8px', textAlign: 'center', color: '#999' }}>
+                        暫無夾中統計數據
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
 
       <SkippedCardsDisplay gameResults={gameResults} />
       </Card>
@@ -472,18 +628,31 @@ const MatchingDataLazy = ({
   gameResults, 
   consecutiveWinsCache, 
   setConsecutiveWinsCache, 
-  addLog 
+  addLog,
+  precomputedMatchingData,
+  isContinuousMode = false,
 }) => {
   const [loading, setLoading] = useState(false);
   const [matchingData, setMatchingData] = useState([]);
+  const [betweenCounts, setBetweenCounts] = useState(null);
+  const cacheKey = `${simulationId}_${playNumber}`;
+  const betweenCacheKey = `${cacheKey}_between`;
 
   useEffect(() => {
+    let isCancelled = false;
     const loadConsecutiveWinsData = async () => {
       // Check cache first
-      const cacheKey = `${simulationId}_${playNumber}`;
-      if (consecutiveWinsCache[cacheKey]) {
-        setMatchingData(consecutiveWinsCache[cacheKey]);
-        return;
+      if (consecutiveWinsCache[cacheKey] && !precomputedMatchingData) {
+        if (!isCancelled) setMatchingData(consecutiveWinsCache[cacheKey]);
+      }
+      // Restore between-counts from cache if available
+      if (consecutiveWinsCache[betweenCacheKey]) {
+        if (!isCancelled) setBetweenCounts(consecutiveWinsCache[betweenCacheKey]);
+      }
+
+      // If we have precomputed chart data, set it immediately (mega/ultra-fast)
+      if (precomputedMatchingData && Array.isArray(precomputedMatchingData)) {
+        if (!isCancelled) setMatchingData(precomputedMatchingData);
       }
 
       // Check if we already have pre-computed consecutive data (for in-memory/continuous mode)
@@ -496,29 +665,123 @@ const MatchingDataLazy = ({
           [cacheKey]: gameResults.consecutiveWinsData
         }));
         
-        setMatchingData(gameResults.consecutiveWinsData);
-        return;
+        if (!isCancelled) setMatchingData(gameResults.consecutiveWinsData);
+        // Still try to compute betweenCounts via API if possible
       }
 
       // Fallback: Load consecutive analysis data from API (for database mode)
-      setLoading(true);
+      if (!isCancelled) setLoading(true);
       try {
-        addLog(`📊 Loading consecutive wins analysis from API for play ${playNumber}...`);
+        if (!precomputedMatchingData) {
+          addLog(`📊 Loading consecutive wins analysis from API for play ${playNumber}...`);
+        } else {
+          addLog(`📊 Loading between-counts (Road Two) from API for play ${playNumber}...`);
+        }
         
         // Load consecutive analysis data from API
         const analysisData = await BaccaratAPI.getPlayConsecutiveAnalysis(simulationId, playNumber, addLog);
         
-        // Analyze the data
-        const consecutiveWinsData = analyzeConsecutiveWinsFromAPI(analysisData);
-        
-        // Cache the result
+        // Analyze the data for chart (if not precomputed)
+        if (!precomputedMatchingData) {
+          const consecutiveWinsData = analyzeConsecutiveWinsFromAPI(analysisData);
+          // Cache the result
+          setConsecutiveWinsCache(prev => ({
+            ...prev,
+            [cacheKey]: consecutiveWinsData
+          }));
+          if (!isCancelled) setMatchingData(consecutiveWinsData);
+          addLog(`✅ Consecutive wins analysis loaded from API for play ${playNumber}`);
+        }
+
+        // Build sequences based on mode:
+        // - Standard: per-game sequences
+        // - Continuous: single concatenated sequence across all games
+        const extractSeqsFromAnalysis = (data) => {
+          const seqs = [];
+          if (!data || !Array.isArray(data.games)) return seqs;
+          const games = [...data.games].sort((a, b) => (a.gameNumber || 0) - (b.gameNumber || 0));
+          if (isContinuousMode) {
+            // Single sequence for the whole play
+            const seq = [];
+            games.forEach((game) => {
+              const hands = Array.isArray(game.handsForAnalysis)
+                ? game.handsForAnalysis
+                : Array.isArray(game.hands) ? game.hands : [];
+              const sortedHands = [...hands].sort((a, b) => (a.handNumber || a.hand_number || 0) - (b.handNumber || b.hand_number || 0));
+              sortedHands.forEach((hand) => {
+                if (hand.result === 'Banker') seq.push(0);
+                else if (hand.result === 'Player') seq.push(1);
+              });
+            });
+            if (seq.length) seqs.push(seq);
+            return seqs;
+          }
+
+          // Standard mode: one sequence per game
+          games.forEach((game) => {
+            const hands = Array.isArray(game.handsForAnalysis)
+              ? game.handsForAnalysis
+              : Array.isArray(game.hands) ? game.hands : [];
+            const sortedHands = [...hands].sort((a, b) => (a.handNumber || a.hand_number || 0) - (b.handNumber || b.hand_number || 0));
+            const seq = [];
+            sortedHands.forEach((hand) => {
+              const result = hand.result;
+              if (result === 'Banker') seq.push(0);
+              else if (result === 'Player') seq.push(1);
+            });
+            if (seq.length) seqs.push(seq);
+          });
+          return seqs;
+        };
+
+        const computeBetweenCountsMulti = (seqs) => {
+          const res = { banker: {}, player: {} };
+          (seqs || []).forEach((seq) => {
+            if (!seq || seq.length === 0) return;
+            const runs = [];
+            let i = 0;
+            while (i < seq.length) {
+              const value = seq[i];
+              let j = i;
+              while (j < seq.length && seq[j] === value) j++;
+              runs.push({ value, length: j - i });
+              i = j;
+            }
+            if (runs.length === 0) return;
+            // Count FIRST run (per game in standard mode, or once in concatenated mode)
+            const first = runs[0];
+            if (first.value === 0) res.banker[first.length] = (res.banker[first.length] || 0) + 1;
+            else if (first.value === 1) res.player[first.length] = (res.player[first.length] || 0) + 1;
+
+            // Count middle runs (bounded), excluding the LAST run of the sequence
+            const lastIndex = runs.length - 1;
+            const effectiveEnd = Math.max(0, lastIndex - 1);
+            for (let r = 1; r <= effectiveEnd; r++) {
+              const prev = runs[r - 1];
+              const curr = runs[r];
+              const next = runs[r + 1];
+              if (!prev || !curr || !next) continue;
+              if (prev.value === 0 && curr.value === 1 && next.value === 0) {
+                const k = curr.length;
+                res.player[k] = (res.player[k] || 0) + 1;
+              }
+              if (prev.value === 1 && curr.value === 0 && next.value === 1) {
+                const k = curr.length;
+                res.banker[k] = (res.banker[k] || 0) + 1;
+              }
+            }
+          });
+          return res;
+        };
+
+        const seqs = extractSeqsFromAnalysis(analysisData);
+        const computed = computeBetweenCountsMulti(seqs);
+        if (!isCancelled) setBetweenCounts(computed);
+        // Cache between-counts for persistence across view changes
         setConsecutiveWinsCache(prev => ({
           ...prev,
-          [cacheKey]: consecutiveWinsData
+          [betweenCacheKey]: computed
         }));
-        
-        setMatchingData(consecutiveWinsData);
-        addLog(`✅ Consecutive wins analysis loaded from API for play ${playNumber}`);
         
       } catch (error) {
         console.error('Error loading consecutive wins data:', error);
@@ -527,23 +790,25 @@ const MatchingDataLazy = ({
         if (gameResults && gameResults.games) {
           addLog(`🔄 Falling back to client-side analysis from game results...`);
           const consecutiveWinsData = analyzeConsecutiveWinsFromAPI(gameResults);
-          setMatchingData(consecutiveWinsData);
+          if (!isCancelled) setMatchingData(consecutiveWinsData);
         }
       } finally {
-        setLoading(false);
+        if (!isCancelled) setLoading(false);
       }
     };
 
     if (simulationId && playNumber) {
       loadConsecutiveWinsData();
     }
-  }, [simulationId, playNumber, gameResults, consecutiveWinsCache, setConsecutiveWinsCache, addLog]);
+    return () => { isCancelled = true; };
+  }, [cacheKey, simulationId, playNumber, precomputedMatchingData]);
 
   return (
     <MatchingData 
       matchingData={matchingData} 
       loading={loading} 
-      gameResults={gameResults} 
+      gameResults={gameResults}
+      betweenCounts={betweenCounts}
     />
   );
 };

@@ -6,7 +6,7 @@ import { LogContext } from "../Terminal/LongContext";
 import BetArea from "./betArea/betArea";
 import RoadOne from "./gameboard/roadone/roadone";
 import RoadTwo from "./gameboard/roadtwo/roadtwo";
-import MatchingData, { MatchingDataLazy } from "./matchingData/matchingData";
+import { MatchingDataLazy } from "./matchingData/matchingData";
 import PlayCard from "./playCard/playCard";
 import "./playground.css";
 
@@ -73,6 +73,7 @@ const CardDebugInfo = () => {
         <h4>Card Loading Debug</h4>
       </div>
       <div>
+        <strong>Version:</strong> 1.0.1<br/>
         <strong>Platform:</strong> {navigator.platform}<br/>
         <strong>Total Cards:</strong> {Object.keys(cardImages).length}<br/>
         <strong>Loaded:</strong> {loadedCards.length}<br/>
@@ -433,25 +434,17 @@ const View = ({
           </div>
         </Card>
 
-        {/* Check if consecutive wins data is pre-computed (mega mode) or needs lazy loading */}
-        {tableViewData.consecutiveWinsData ? (
-          // MEGA-optimized: use pre-computed data
-          <MatchingData
-            matchingData={tableViewData.consecutiveWinsData}
-            loading={false}
-            gameResults={tableViewData}
-          />
-        ) : (
-          // Standard optimization: lazy load data
-          <MatchingDataLazy
-            simulationId={simulationId}
-            playNumber={tableViewData.playNumber}
-            gameResults={tableViewData}
-            consecutiveWinsCache={consecutiveWinsCache}
-            setConsecutiveWinsCache={setConsecutiveWinsCache}
-            addLog={addLog}
-          />
-        )}
+        {/* Always use lazy loader so we can also compute between-counts via API; pass precomputed data for instant chart */}
+        <MatchingDataLazy
+          simulationId={simulationId}
+          playNumber={tableViewData.playNumber}
+          gameResults={tableViewData}
+          consecutiveWinsCache={consecutiveWinsCache}
+          setConsecutiveWinsCache={setConsecutiveWinsCache}
+          addLog={addLog}
+          precomputedMatchingData={tableViewData.consecutiveWinsData || null}
+          isContinuousMode={simulationSettings?.isContinuousMode || false}
+        />
 
         {/* Check if dataset exceeds limit */}
         {tableViewData.summary?.dataLimitExceeded ? (
