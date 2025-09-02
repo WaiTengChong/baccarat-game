@@ -311,6 +311,83 @@ function hasPair(cards) {
 
 // API Routes
 
+// Admin: Clear all data and reinitialize database (used by Windows reset)
+app.post('/api/admin/clear-all', async (req, res) => {
+  try {
+    console.log('🧹 Admin clear-all requested');
+    cleanupDatabase();
+    // small delay to ensure files are released on Windows
+    await new Promise(resolve => setTimeout(resolve, 300));
+    await initTempDatabase();
+    res.set('Cache-Control', 'no-store');
+    return res.json({ cleared: true });
+  } catch (error) {
+    console.error('Admin clear-all error:', error);
+    return res.status(500).json({ cleared: false, error: error.message });
+  }
+});
+
+// Reset specific simulation data from the database
+app.post('/api/simulations/:id/reset', (req, res) => {
+  const { id } = req.params;
+  if (!db) {
+    return res.status(503).json({ reset: false, error: 'Database not ready' });
+  }
+
+  const resultSummary = { hands: 0, games: 0, simulations: 0, consecutive_wins: 0 };
+  db.serialize(() => {
+    // Delete hands for all games in this simulation
+    db.run(
+      'DELETE FROM hands WHERE game_id IN (SELECT id FROM games WHERE simulation_id = ?)',
+      [id],
+      function(err) {
+        if (err) {
+          return res.status(500).json({ reset: false, error: err.message });
+        }
+        resultSummary.hands = this.changes || 0;
+
+        // Delete games for this simulation
+        db.run(
+          'DELETE FROM games WHERE simulation_id = ?',
+          [id],
+          function(err) {
+            if (err) {
+              return res.status(500).json({ reset: false, error: err.message });
+            }
+            resultSummary.games = this.changes || 0;
+
+            // Delete consecutive_wins for this simulation
+            db.run(
+              'DELETE FROM consecutive_wins WHERE simulation_id = ?',
+              [id],
+              function(err) {
+                if (err) {
+                  return res.status(500).json({ reset: false, error: err.message });
+                }
+                resultSummary.consecutive_wins = this.changes || 0;
+
+                // Finally, delete the simulation record itself (if exists)
+                db.run(
+                  'DELETE FROM simulations WHERE id = ?',
+                  [id],
+                  function(err) {
+                    if (err) {
+                      return res.status(500).json({ reset: false, error: err.message });
+                    }
+                    resultSummary.simulations = this.changes || 0;
+                    res.set('Cache-Control', 'no-store');
+                    return res.json({ reset: true, deleted: resultSummary });
+                  }
+                );
+              }
+            );
+          }
+        );
+      }
+    );
+  });
+});
+
 // Add a health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ 
@@ -433,6 +510,9 @@ app.get('/api/simulations/:id/results', (req, res) => {
 app.get('/api/games/:gameId/hands', (req, res) => {
   const { gameId } = req.params;
   
+  // prevent any caching for detailed data
+  res.set('Cache-Control', 'no-store');
+
   db.all(
     'SELECT * FROM hands WHERE game_id = ? ORDER BY hand_number',
     [gameId],

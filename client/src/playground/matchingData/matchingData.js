@@ -635,18 +635,43 @@ const MatchingDataLazy = ({
   const [loading, setLoading] = useState(false);
   const [matchingData, setMatchingData] = useState([]);
   const [betweenCounts, setBetweenCounts] = useState(null);
-  const cacheKey = `${simulationId}_${playNumber}`;
+  const [forceRefresh, setForceRefresh] = useState(0);
+  
+  // Enhanced caching for Windows compatibility
+  const isWindows = navigator.userAgent.toLowerCase().includes('win') || 
+                   navigator.platform.toLowerCase().includes('win');
+  // IMPORTANT: Use a stable cache key (no Date.now()) to avoid infinite re-renders
+  const cacheKey = isWindows ? 
+    `${simulationId}_${playNumber}_win` : 
+    `${simulationId}_${playNumber}`;
   const betweenCacheKey = `${cacheKey}_between`;
+
+  // Guard against concurrent/repeated loads for the same key
+  const inFlightRef = React.useRef(null);
 
   useEffect(() => {
     let isCancelled = false;
     const loadConsecutiveWinsData = async () => {
-      // Check cache first
-      if (consecutiveWinsCache[cacheKey] && !precomputedMatchingData) {
+      // Prevent duplicate in-flight requests for same key
+      if (inFlightRef.current === cacheKey) {
+        return;
+      }
+      inFlightRef.current = cacheKey;
+
+      // For Windows, skip cache more aggressively to prevent 1-1 issue
+      const shouldSkipCache = isWindows || precomputedMatchingData;
+      
+      if (isWindows && addLog) {
+        addLog(`🪟 Windows detected: Loading fresh consecutive wins data`);
+      }
+      
+      // Check cache first (but skip for Windows to ensure fresh data)
+      if (consecutiveWinsCache[cacheKey] && !shouldSkipCache) {
+        console.log(`Using cached consecutive wins data for ${cacheKey}`);
         if (!isCancelled) setMatchingData(consecutiveWinsCache[cacheKey]);
       }
-      // Restore between-counts from cache if available
-      if (consecutiveWinsCache[betweenCacheKey]) {
+      // Restore between-counts from cache if available (also skip for Windows)
+      if (consecutiveWinsCache[betweenCacheKey] && !shouldSkipCache) {
         if (!isCancelled) setBetweenCounts(consecutiveWinsCache[betweenCacheKey]);
       }
 
@@ -794,6 +819,12 @@ const MatchingDataLazy = ({
         }
       } finally {
         if (!isCancelled) setLoading(false);
+        // Clear in-flight guard after slight delay to allow state to settle
+        setTimeout(() => {
+          if (inFlightRef.current === cacheKey) {
+            inFlightRef.current = null;
+          }
+        }, 0);
       }
     };
 
@@ -801,7 +832,7 @@ const MatchingDataLazy = ({
       loadConsecutiveWinsData();
     }
     return () => { isCancelled = true; };
-  }, [cacheKey, simulationId, playNumber, precomputedMatchingData]);
+  }, [simulationId, playNumber, precomputedMatchingData, isWindows]);
 
   return (
     <MatchingData 

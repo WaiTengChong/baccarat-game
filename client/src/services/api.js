@@ -1,25 +1,45 @@
 const API_BASE_URL = 'http://localhost:3001/api';
 
 class BaccaratAPI {
-  // Start a new simulation (now returns summary data only)
-  static async startSimulation(plays, gamesPerPlay, handsPerGame, deckCount = 8, skipCard = 0, useInMemory = true, isContinuousMode = false, logger = null) {
+  // Start a new simulation (now returns summary data only) - Enhanced for Windows compatibility
+  static async startSimulation(plays, gamesPerPlay, handsPerGame, deckCount = 8, skipCard = 0, useInMemory = true, isContinuousMode = false, logger = null, smallCardReduction = 0, bigCardReduction = 0) {
     try {
       const modeText = useInMemory ? 'ultra-fast in-memory' : 'database-backed';
       const continuousText = isContinuousMode ? ' (continuous)' : '';
+      const cardReductionText = (smallCardReduction > 0 || bigCardReduction > 0) ? `, small cards -${smallCardReduction}%, big cards -${bigCardReduction}%` : '';
+      
       if (logger) {
-        logger(`🚀 Starting ${modeText}${continuousText} simulation: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks, skip ${skipCard} cards`);
+        logger(`🚀 Starting ${modeText}${continuousText} simulation: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks, skip ${skipCard} cards${cardReductionText}`);
         logger(`📡 Sending request to ${API_BASE_URL}/simulations`);
+        
+        // Log platform information for debugging
+        const platform = navigator.platform || 'Unknown';
+        const userAgent = navigator.userAgent || 'Unknown';
+        logger(`🖥️ Platform: ${platform}, Agent: ${userAgent.substring(0, 50)}...`);
       }
 
       const requestBody = {
-        plays,
-        gamesPerPlay,
-        handsPerGame,
-        deckCount,
-        skipCard,
-        useInMemory,
-        isContinuousMode
+        plays: parseInt(plays) || 1,
+        gamesPerPlay: parseInt(gamesPerPlay) || 10,
+        handsPerGame: parseInt(handsPerGame) || 70,
+        deckCount: parseInt(deckCount) || 8,
+        skipCard: parseInt(skipCard) || 0,
+        useInMemory: Boolean(useInMemory),
+        isContinuousMode: Boolean(isContinuousMode),
+        smallCardReduction: parseInt(smallCardReduction) || 0,
+        bigCardReduction: parseInt(bigCardReduction) || 0
       };
+      
+      // Add additional timeout for Windows
+      const isWindows = navigator.platform.toLowerCase().includes('win');
+      const timeoutMs = isWindows ? 300000 : 120000; // 5 minutes for Windows, 2 minutes for others
+      
+      if (logger && isWindows) {
+        logger(`🪟 Windows detected - using extended timeout (${timeoutMs/1000}s)`);
+      }
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       
       const response = await fetch(`${API_BASE_URL}/simulations`, {
         method: 'POST',
@@ -27,10 +47,14 @@ class BaccaratAPI {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(requestBody),
+        signal: controller.signal
       });
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        const errorMsg = `HTTP error! status: ${response.status}`;
+        const errorText = await response.text().catch(() => 'Unable to read response');
+        const errorMsg = `HTTP error! status: ${response.status}, body: ${errorText}`;
         if (logger) {
           logger(`❌ API Error: ${errorMsg}`);
         }
@@ -38,9 +62,19 @@ class BaccaratAPI {
       }
 
       const result = await response.json();
-      const optimizationText = result.optimizationLevel === 'ultra-fast' ? 'ULTRA-FAST (no database)' : result.optimizationLevel;
+      
+      // Validate result structure for Windows compatibility
+      if (!result || typeof result !== 'object') {
+        const errorMsg = 'Invalid response format from server';
+        if (logger) {
+          logger(`❌ ${errorMsg}: ${typeof result}`);
+        }
+        throw new Error(errorMsg);
+      }
+      
+      const optimizationText = result.optimizationLevel === 'ultra-fast' ? 'ULTRA-FAST (no database)' : (result.optimizationLevel || 'standard');
       if (logger) {
-        logger(`✅ ${optimizationText} simulation completed with ID: ${result.simulationId}`);
+        logger(`✅ ${optimizationText} simulation completed with ID: ${result.simulationId || 'N/A'}`);
         if (result.optimizationLevel === 'ultra-fast') {
           logger(`⚡ Pure in-memory processing - no database operations performed`);
           logger(`🚀 Maximum speed achieved with zero I/O overhead`);
@@ -48,6 +82,9 @@ class BaccaratAPI {
           logger(`📊 Summary data loaded (detailed hands available on-demand)`);
         }
         logger(`🔥 Response size significantly reduced for performance`);
+        
+        // Log result validation for debugging
+        logger(`📋 Result validation: simulationId=${!!result.simulationId}, results=${Array.isArray(result.results) ? result.results.length : 'N/A'}`);
       }
 
       return result;
@@ -55,6 +92,13 @@ class BaccaratAPI {
       console.error('Error starting simulation:', error);
       if (logger) {
         logger(`❌ Failed to start simulation: ${error.message}`);
+        
+        // Additional Windows-specific error logging
+        if (error.name === 'AbortError') {
+          logger(`⏱️ Request timed out - this may indicate network or server issues`);
+        } else if (error.message.includes('fetch')) {
+          logger(`🌐 Network error - check server connectivity`);
+        }
       }
       throw error;
     }
@@ -134,17 +178,55 @@ class BaccaratAPI {
     }
   }
 
-  // Get detailed game hands
+  // Get detailed game hands - Enhanced for Windows compatibility
   static async getGameHands(gameId, logger = null) {
     try {
+      // Validate gameId before making request
+      if (!gameId || gameId === 'undefined' || gameId === 'null') {
+        const errorMsg = `Invalid game ID: ${gameId}`;
+        if (logger) {
+          logger(`❌ ${errorMsg}`);
+        }
+        throw new Error(errorMsg);
+      }
+
       if (logger) {
         logger(`🎮 Loading detailed hands for game ID: ${gameId}`);
       }
 
-      const response = await fetch(`${API_BASE_URL}/games/${gameId}/hands`);
+      // Add timeout for Windows compatibility
+      const isWindows = navigator.platform.toLowerCase().includes('win');
+      const timeoutMs = isWindows ? 60000 : 30000; // 60s for Windows, 30s for others
+      
+      // Add cache-busting parameters for Windows compatibility
+      const cacheBuster = Date.now();
+      const params = new URLSearchParams({
+        timestamp: cacheBuster.toString(),
+        platform: isWindows ? 'windows' : 'other',
+        noCache: 'true'
+      });
+
+      if (logger && isWindows) {
+        logger(`🪟 Adding cache-busting params: ${cacheBuster}`);
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      const response = await fetch(`${API_BASE_URL}/games/${gameId}/hands?${params}`, {
+        signal: controller.signal,
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
-        const errorMsg = `HTTP error! status: ${response.status}`;
+        const errorText = await response.text().catch(() => 'Unable to read response');
+        const errorMsg = `HTTP error! status: ${response.status}, response: ${errorText}`;
         if (logger) {
           logger(`❌ Game hands fetch failed: ${errorMsg}`);
         }
@@ -152,16 +234,38 @@ class BaccaratAPI {
       }
 
       const result = await response.json();
+      
+      // Validate result structure
+      if (!result || typeof result !== 'object') {
+        const errorMsg = 'Invalid response format from server';
+        if (logger) {
+          logger(`❌ ${errorMsg}: ${typeof result}`);
+        }
+        throw new Error(errorMsg);
+      }
+      
+      // Ensure hands array exists
+      if (!result.hands || !Array.isArray(result.hands)) {
+        if (logger) {
+          logger(`⚠️ No hands array in response, creating empty array`);
+        }
+        result.hands = [];
+      }
+      
       if (logger) {
-        const handCount = result.hands ? result.hands.length : 0;
+        const handCount = result.hands.length;
         logger(`✅ Loaded ${handCount} hands for game ${gameId}`);
         
-        if (result.hands && result.hands.length > 0) {
-          const bankerWins = result.hands.filter(h => h.result === 'Banker').length;
-          const playerWins = result.hands.filter(h => h.result === 'Player').length;
-          const ties = result.hands.filter(h => h.result === 'Tie').length;
-          
-          logger(`🎯 Game ${gameId} results: Banker ${bankerWins} | Player ${playerWins} | Ties ${ties}`);
+        if (handCount > 0) {
+          try {
+            const bankerWins = result.hands.filter(h => h && h.result === 'Banker').length;
+            const playerWins = result.hands.filter(h => h && h.result === 'Player').length;
+            const ties = result.hands.filter(h => h && h.result === 'Tie').length;
+            
+            logger(`🎯 Game ${gameId} results: Banker ${bankerWins} | Player ${playerWins} | Ties ${ties}`);
+          } catch (countError) {
+            logger(`⚠️ Error counting results: ${countError.message}`);
+          }
         }
       }
 
@@ -169,23 +273,44 @@ class BaccaratAPI {
     } catch (error) {
       console.error('Error getting game hands:', error);
       if (logger) {
-        logger(`❌ Error loading game hands: ${error.message}`);
+        if (error.name === 'AbortError') {
+          logger(`⏱️ Request timed out for game ${gameId}`);
+        } else {
+          logger(`❌ Error loading game hands: ${error.message}`);
+        }
       }
       throw error;
     }
   }
 
-  // NEW: Get games for a specific play with pre-computed table data (optimized)
+  // NEW: Get games for a specific play with pre-computed table data (optimized) - Enhanced for Windows
   static async getPlayGames(simulationId, playNumber, page = 1, pageSize = 1000, logger = null) {
     try {
       if (logger) {
         logger(`📋 Loading games for simulation ${simulationId}, play ${playNumber} (page ${page})`);
       }
 
-      const response = await fetch(`${API_BASE_URL}/simulations/${simulationId}/plays/${playNumber}/games?page=${page}&pageSize=${pageSize}`);
+      // Add cache-busting parameters for Windows compatibility
+      const isWindows = navigator.userAgent.toLowerCase().includes('win') || 
+                       navigator.platform.toLowerCase().includes('win');
+      
+      const cacheBuster = Date.now();
+      const params = new URLSearchParams({
+        page: page.toString(),
+        pageSize: pageSize.toString(),
+        timestamp: cacheBuster.toString(),
+        platform: isWindows ? 'windows' : 'other'
+      });
+
+      if (logger && isWindows) {
+        logger(`🪟 Windows detected - adding cache-busting parameters`);
+      }
+
+      const response = await fetch(`${API_BASE_URL}/simulations/${simulationId}/plays/${playNumber}/games?${params}`);
       
       if (!response.ok) {
-        const errorMsg = `HTTP error! status: ${response.status}`;
+        const errorText = await response.text().catch(() => 'Unable to read response');
+        const errorMsg = `HTTP error! status: ${response.status}, response: ${errorText}`;
         if (logger) {
           logger(`❌ Play games fetch failed: ${errorMsg}`);
         }
@@ -193,11 +318,26 @@ class BaccaratAPI {
       }
 
       const result = await response.json();
+      
+      // Validate result structure
+      if (!result || typeof result !== 'object') {
+        const errorMsg = 'Invalid response format from server';
+        if (logger) {
+          logger(`❌ ${errorMsg}: ${typeof result}`);
+        }
+        throw new Error(errorMsg);
+      }
+      
       if (logger) {
         const gameCount = result.games ? result.games.length : 0;
         const pagination = result.pagination || {};
         logger(`✅ Loaded ${gameCount} games for play ${playNumber} (page ${pagination.page}/${pagination.totalPages})`);
         logger(`📊 Pre-computed table data ready - no frontend processing needed!`);
+        
+        // Log cache-busting for Windows debugging
+        if (isWindows) {
+          logger(`🔍 Cache-buster: ${cacheBuster}`);
+        }
       }
 
       return result;
@@ -254,6 +394,96 @@ class BaccaratAPI {
         logger(`❌ Error loading consecutive analysis: ${error.message}`);
       }
       throw error;
+    }
+  }
+
+  // NEW: Clear all database data (for Windows reset issues)
+  static async clearAllData(logger = null) {
+    try {
+      if (logger) {
+        logger(`🗑️ Clearing all database data...`);
+      }
+
+      const response = await fetch(`${API_BASE_URL}/admin/clear-all`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unable to read response');
+        const errorMsg = `HTTP error! status: ${response.status}, response: ${errorText}`;
+        if (logger) {
+          logger(`❌ Database clear failed: ${errorMsg}`);
+        }
+        throw new Error(errorMsg);
+      }
+
+      const result = await response.json();
+      
+      if (logger) {
+        logger(`✅ Database cleared successfully`);
+        if (result.cleared) {
+          logger(`🗑️ Cleared: ${JSON.stringify(result.cleared)}`);
+        }
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error clearing database:', error);
+      if (logger) {
+        logger(`❌ Error clearing database: ${error.message}`);
+      }
+      // Don't throw - this should be optional and not break the reset flow
+      return { cleared: false, error: error.message };
+    }
+  }
+
+  // NEW: Reset specific simulation data
+  static async resetSimulationData(simulationId, logger = null) {
+    try {
+      if (!simulationId) {
+        if (logger) {
+          logger(`⚠️ No simulation ID provided for reset`);
+        }
+        return { reset: false };
+      }
+
+      if (logger) {
+        logger(`🔄 Resetting simulation data for ID: ${simulationId}`);
+      }
+
+      const response = await fetch(`${API_BASE_URL}/simulations/${simulationId}/reset`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unable to read response');
+        const errorMsg = `HTTP error! status: ${response.status}, response: ${errorText}`;
+        if (logger) {
+          logger(`❌ Simulation reset failed: ${errorMsg}`);
+        }
+        throw new Error(errorMsg);
+      }
+
+      const result = await response.json();
+      
+      if (logger) {
+        logger(`✅ Simulation ${simulationId} reset successfully`);
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error resetting simulation:', error);
+      if (logger) {
+        logger(`❌ Error resetting simulation: ${error.message}`);
+      }
+      // Don't throw - this should be optional and not break the reset flow
+      return { reset: false, error: error.message };
     }
   }
 

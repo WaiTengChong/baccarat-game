@@ -5,69 +5,130 @@ const RoadTwo = ({ gameResults = [] }) => {
   const [displayResults, setDisplayResults] = useState([]);
   const [roadtwoGrid, setroadtwoGrid] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [forceRefresh, setForceRefresh] = useState(0);
 
-  // Convert gameResults to display format
+  // Convert gameResults to display format with enhanced Windows compatibility
   const convertGameResults = (results) => {
     const converted = [];
     let handId = 1;
 
-    // Function to detect pairs in cards
+    // Function to detect pairs in cards with null safety
     const hasPair = (cards) => {
-      return cards && Array.isArray(cards) && cards.length >= 2 && 
-             cards[0] && cards[1] && cards[0].value === cards[1].value;
+      try {
+        return cards && Array.isArray(cards) && cards.length >= 2 && 
+               cards[0] && cards[1] && 
+               cards[0].value !== undefined && cards[1].value !== undefined &&
+               cards[0].value === cards[1].value;
+      } catch (error) {
+        console.warn('Error checking for pairs:', error);
+        return false;
+      }
     };
 
-    // Check if results is a single game object with hands array
-    if (results && results.hands && Array.isArray(results.hands)) {
-      // Single game object - process hands directly
-      results.hands.forEach((hand) => {
-        converted.push({
-          id: handId++,
-          outcome:
-            hand.result === "Player"
-              ? "閑"
-              : hand.result === "Banker"
-              ? "莊"
-              : "和",
-          type: hand.result.toLowerCase(),
-          bankPair: hand.bankerPair || hasPair(hand.bankerCards || []),
-          playerPair: hand.playerPair || hasPair(hand.playerCards || []),
-          playerTotal: hand.playerTotal || 0,
-          bankerTotal: hand.bankerTotal || 0,
-          playerCards: hand.playerCards || [],
-          bankerCards: hand.bankerCards || [],
+    // Helper function to safely convert hand result
+    const getOutcome = (result) => {
+      if (!result || typeof result !== 'string') return "和";
+      
+      switch (result.toLowerCase()) {
+        case 'player':
+          return "閑";
+        case 'banker':
+          return "莊";
+        case 'tie':
+          return "和";
+        default:
+          return "和";
+      }
+    };
+
+    // Helper function to safely get result type
+    const getResultType = (result) => {
+      if (!result || typeof result !== 'string') return "tie";
+      return result.toLowerCase();
+    };
+
+    try {
+      // Check if results is a single game object with hands array
+      if (results && typeof results === 'object' && !Array.isArray(results) && 
+          results.hands && Array.isArray(results.hands)) {
+        // Single game object - process hands directly
+        console.log('Converting single game with', results.hands.length, 'hands');
+        
+        results.hands.forEach((hand, index) => {
+          if (!hand) {
+            console.warn('Null hand at index', index);
+            return;
+          }
+          
+          try {
+            converted.push({
+              id: handId++,
+              outcome: getOutcome(hand.result),
+              type: getResultType(hand.result),
+              bankPair: hand.bankerPair || hasPair(hand.bankerCards || []),
+              playerPair: hand.playerPair || hasPair(hand.playerCards || []),
+              playerTotal: parseInt(hand.playerTotal) || 0,
+              bankerTotal: parseInt(hand.bankerTotal) || 0,
+              playerCards: Array.isArray(hand.playerCards) ? hand.playerCards : [],
+              bankerCards: Array.isArray(hand.bankerCards) ? hand.bankerCards : [],
+            });
+          } catch (handError) {
+            console.warn('Error processing hand at index', index, ':', handError);
+          }
         });
-      });
-    } else if (Array.isArray(results)) {
-      // Nested structure - process as before
-      results.forEach((play) => {
-        if (play.games && Array.isArray(play.games)) {
-          play.games.forEach((game) => {
-            if (game.hands && Array.isArray(game.hands)) {
-              game.hands.forEach((hand) => {
-                converted.push({
-                  id: handId++,
-                  outcome:
-                    hand.result === "Player"
-                      ? "閑"
-                      : hand.result === "Banker"
-                      ? "莊"
-                      : "和",
-                  type: hand.result.toLowerCase(),
-                  bankPair: hand.bankerPair || hasPair(hand.bankerCards || []),
-                  playerPair: hand.playerPair || hasPair(hand.playerCards || []),
-                  playerTotal: hand.playerTotal || 0,
-                  bankerTotal: hand.bankerTotal || 0,
-                  playerCards: hand.playerCards || [],
-                  bankerCards: hand.bankerCards || [],
+      } else if (Array.isArray(results)) {
+        // Nested structure - process as before
+        console.log('Converting array of', results.length, 'plays');
+        
+        results.forEach((play, playIndex) => {
+          if (!play || typeof play !== 'object') {
+            console.warn('Invalid play at index', playIndex);
+            return;
+          }
+          
+          if (play.games && Array.isArray(play.games)) {
+            play.games.forEach((game, gameIndex) => {
+              if (!game || typeof game !== 'object') {
+                console.warn('Invalid game at play', playIndex, 'game', gameIndex);
+                return;
+              }
+              
+              if (game.hands && Array.isArray(game.hands)) {
+                game.hands.forEach((hand, handIndex) => {
+                  if (!hand) {
+                    console.warn('Null hand at play', playIndex, 'game', gameIndex, 'hand', handIndex);
+                    return;
+                  }
+                  
+                  try {
+                    converted.push({
+                      id: handId++,
+                      outcome: getOutcome(hand.result),
+                      type: getResultType(hand.result),
+                      bankPair: hand.bankerPair || hasPair(hand.bankerCards || []),
+                      playerPair: hand.playerPair || hasPair(hand.playerCards || []),
+                      playerTotal: parseInt(hand.playerTotal) || 0,
+                      bankerTotal: parseInt(hand.bankerTotal) || 0,
+                      playerCards: Array.isArray(hand.playerCards) ? hand.playerCards : [],
+                      bankerCards: Array.isArray(hand.bankerCards) ? hand.bankerCards : [],
+                    });
+                  } catch (handError) {
+                    console.warn('Error processing hand at play', playIndex, 'game', gameIndex, 'hand', handIndex, ':', handError);
+                  }
                 });
-              });
-            }
-          });
-        }
-      });
+              }
+            });
+          }
+        });
+      } else {
+        console.warn('Invalid results format:', typeof results, results);
+      }
+    } catch (error) {
+      console.error('Error in convertGameResults:', error);
+      console.error('Results that caused error:', results);
     }
 
+    console.log('Converted', converted.length, 'hands for RoadTwo display');
     return converted;
   };
 
@@ -172,25 +233,61 @@ const RoadTwo = ({ gameResults = [] }) => {
   };
 
   useEffect(() => {
-    if (
-      gameResults &&
-      (Array.isArray(gameResults) ? gameResults.length > 0 : 
-       (gameResults.hands && gameResults.hands.length > 0))
-    ) {
+    // Add more robust data validation for Windows compatibility
+    const processGameResults = () => {
       try {
-        const converted = convertGameResults(gameResults);
-        setDisplayResults(converted);
-        const roadtwoData = convertToroadtwo(converted);
-        setroadtwoGrid(roadtwoData);
+        // Reset states first to prevent stale data issues
+        setDisplayResults([]);
+        setroadtwoGrid([]);
+        setCurrentPage(1);
+        
+        // Validate input data more thoroughly
+        if (!gameResults) {
+          console.log('RoadTwo: No game results provided');
+          return;
+        }
+        
+        // Check for array with data
+        if (Array.isArray(gameResults) && gameResults.length > 0) {
+          console.log('RoadTwo: Processing array of game results', gameResults.length);
+          const converted = convertGameResults(gameResults);
+          setDisplayResults(converted);
+          const roadtwoData = convertToroadtwo(converted);
+          setroadtwoGrid(roadtwoData);
+          console.log('RoadTwo: Processed', converted.length, 'hands into', roadtwoData.length, 'grid items');
+          return;
+        }
+        
+        // Check for single game object with hands
+        if (gameResults && typeof gameResults === 'object' && 
+            gameResults.hands && Array.isArray(gameResults.hands) && 
+            gameResults.hands.length > 0) {
+          console.log('RoadTwo: Processing single game with hands', gameResults.hands.length);
+          const converted = convertGameResults(gameResults);
+          setDisplayResults(converted);
+          const roadtwoData = convertToroadtwo(converted);
+          setroadtwoGrid(roadtwoData);
+          console.log('RoadTwo: Processed', converted.length, 'hands into', roadtwoData.length, 'grid items');
+          return;
+        }
+        
+        // If we get here, no valid data was found
+        console.log('RoadTwo: No valid game results found, gameResults:', typeof gameResults, gameResults);
+        
       } catch (error) {
-        console.warn('Error processing road data:', error);
+        console.error('Error processing road data:', error);
+        console.error('GameResults that caused error:', gameResults);
         setDisplayResults([]);
         setroadtwoGrid([]);
       }
-    } else {
-      setDisplayResults([]);
-      setroadtwoGrid([]);
-    }
+    };
+    
+    // Use setTimeout to ensure state updates don't conflict on Windows
+    const timeoutId = setTimeout(processGameResults, 0);
+    
+    return () => {
+      clearTimeout(timeoutId);
+    };
   }, [gameResults]);
 
   // Calculate grid dimensions for Big Road with pagination based on actual data
@@ -403,6 +500,13 @@ const RoadTwo = ({ gameResults = [] }) => {
       {displayResults.length === 0 && (
         <div className="empty-state">
           <p>No game results yet. Click PLAY to start the game!</p>
+          {gameResults && (
+            <div style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
+              <p>Debug info: gameResults type = {typeof gameResults}</p>
+              {Array.isArray(gameResults) && <p>Array length: {gameResults.length}</p>}
+              {gameResults?.hands && <p>Hands length: {gameResults.hands.length}</p>}
+            </div>
+          )}
         </div>
       )}
     </div>

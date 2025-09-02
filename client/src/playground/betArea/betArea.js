@@ -1,4 +1,4 @@
-import { Button, InputNumber, message, Progress, Space, Switch, Typography } from 'antd';
+import { Button, InputNumber, message, Progress, Select, Space, Switch, Typography } from 'antd';
 import React, { useContext, useState } from 'react';
 import { LogContext } from "../../Terminal/LongContext";
 import BaccaratAPI from "../../services/api";
@@ -45,6 +45,8 @@ const BetArea = ({ onGameStart, onResetGame }) => {
   const [skipCard, setSkipCard] = useState(10);
   const [useInMemory, setUseInMemory] = useState(true); // Default to ultra-fast mode
   const [isContinuousMode, setIsContinuousMode] = useState(false); // New continuous mode toggle
+  const [smallCardReduction, setSmallCardReduction] = useState(0); // 1-4減少
+  const [bigCardReduction, setBigCardReduction] = useState(0); // 5-9減少
 
   const handlePlay = async () => {
     console.log('Starting game with:', {
@@ -54,12 +56,15 @@ const BetArea = ({ onGameStart, onResetGame }) => {
       deckCount,
       skipCard,
       useInMemory,
-      isContinuousMode
+      isContinuousMode,
+      smallCardReduction,
+      bigCardReduction
     });
 
     clearLogs();
     const modeDescription = isContinuousMode ? '連貫模式 (無手數限制)' : '標準模式';
-    addLog(`運行 ${plays}, 局數 ${gamesPerPlay}, 手 ${handsPerGame}, 飛牌數 ${skipCard}, ${useInMemory ? '超快記憶體模式' : '資料庫模式'}, ${modeDescription}`);
+    const cardReductionText = (smallCardReduction > 0 || bigCardReduction > 0) ? `, 1-4減少 ${smallCardReduction}%, 5-9減少 ${bigCardReduction}%` : '';
+    addLog(`運行 ${plays}, 局數 ${gamesPerPlay}, 手 ${handsPerGame}, 飛牌數 ${skipCard}${cardReductionText}, ${useInMemory ? '超快記憶體模式' : '資料庫模式'}, ${modeDescription}`);
     
     setIsPlaying(true);
     setProgress(0);
@@ -69,7 +74,8 @@ const BetArea = ({ onGameStart, onResetGame }) => {
       // Start simulation on backend with logging - now returns complete data
       const modeText = useInMemory ? 'ultra-fast in-memory mode' : 'database mode';
       const continuousText = isContinuousMode ? ' (continuous)' : '';
-      addLog(`🚀 Starting simulation in ${modeText}${continuousText}: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks, skip ${skipCard} cards`);
+      const cardReductionDetail = (smallCardReduction > 0 || bigCardReduction > 0) ? `, 1-4减少 ${smallCardReduction}%, 5-9减少 ${bigCardReduction}%` : '';
+      addLog(`🚀 Starting simulation in ${modeText}${continuousText}: ${plays} plays, ${gamesPerPlay} games/play, ${handsPerGame} hands/game, ${deckCount} decks, skip ${skipCard} cards${cardReductionDetail}`);
       setSimulationStatus('Running simulation...');
       setProgress(50); // Show some progress
       
@@ -81,7 +87,9 @@ const BetArea = ({ onGameStart, onResetGame }) => {
         skipCard,
         useInMemory, // Pass the in-memory flag
         isContinuousMode, // Pass the continuous mode flag
-        addLog  // Pass the logger
+        addLog,  // Pass the logger
+        smallCardReduction, // Pass 1-4減少 setting
+        bigCardReduction // Pass 5-9減少 setting
       );
       
       console.log('API Response:', response);
@@ -133,7 +141,9 @@ const BetArea = ({ onGameStart, onResetGame }) => {
         handsPerGame,
         skipCard,
         useInMemory,
-        isContinuousMode
+        isContinuousMode,
+        smallCardReduction,
+        bigCardReduction
       });
       
     } catch (error) {
@@ -220,6 +230,38 @@ const BetArea = ({ onGameStart, onResetGame }) => {
             className="control-input"
             disabled={isPlaying}
           />
+        </div>
+
+        <div className="control-group">
+          <Text className="control-label">1-4減少:</Text>
+          <Select
+            value={smallCardReduction}
+            onChange={(value) => setSmallCardReduction(value)}
+            className="control-input"
+            disabled={isPlaying}
+            style={{ width: 80 }}
+          >
+            <Select.Option value={0}>0%</Select.Option>
+            <Select.Option value={10}>10%</Select.Option>
+            <Select.Option value={20}>20%</Select.Option>
+            <Select.Option value={30}>30%</Select.Option>
+          </Select>
+        </div>
+
+        <div className="control-group">
+          <Text className="control-label">5-9減少:</Text>
+          <Select
+            value={bigCardReduction}
+            onChange={(value) => setBigCardReduction(value)}
+            className="control-input"
+            disabled={isPlaying}
+            style={{ width: 80 }}
+          >
+            <Select.Option value={0}>0%</Select.Option>
+            <Select.Option value={10}>10%</Select.Option>
+            <Select.Option value={20}>20%</Select.Option>
+            <Select.Option value={30}>30%</Select.Option>
+          </Select>
         </div>
 
         <div className="control-group">
@@ -316,3 +358,4 @@ const BetArea = ({ onGameStart, onResetGame }) => {
 };
 
 export default BetArea;
+
